@@ -2,6 +2,10 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.6.1
+
+The browser page sets `crossOrigin = "anonymous"` before drawing the atlas, and if `getImageData` throws (WebKit on raw.githack.com reports `SecurityError: The operation is insecure.`), hover uses the tile diamond instead of the atlas alpha. That read no longer skips loading the map.
+
 ### 2026-11-10 — version 0.6.0, item 6
 
 `Megacorp.Peds` walks a `Megacorp.Path` route on a fixed tick. A ped stores the tile it stands on, an integer count of sub-tile steps toward the next tile (`Steps_Per_Tile` is 8; 0 is the centre), an 8-way facing, a speed in sub-tile steps per tick, and a state: `Standing`, `Walking`, or `Arrived`. There is no floating point. Each tick moves the ped along the route and sets facing from the step it is taking.
@@ -54,7 +58,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–6 (version 0.6.0) are implemented under `megacorp/`. The browser check page is `web/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–6 are implemented under `megacorp/`. The browser check page is `web/` at version 0.6.1.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  

@@ -1,7 +1,9 @@
-# Megacorp Simulator 0.6.0
+# Megacorp Simulator 0.6.1
 
 Headless Ada core for Megacorp Simulator. Version 0.6.0 adds ped
-movement on a fixed tick (design items 1–6). Later packages are
+movement on a fixed tick (design items 1–6). Version 0.6.1 keeps the
+browser page working when WebKit refuses to read the atlas pixels.
+Later packages are
 still specs. FreeSynd stays elsewhere in the repository as a logic
 reference and is not built here.
 
@@ -42,7 +44,7 @@ That builds with `gprbuild -P megacorp.gpr -p`, regenerates the
 tileset with `tools/gen_tileset.py`, runs `bin/megacorp` and
 `bin/megacorp_smoke`, and rewrites `../web/data/` from the Ada map
 export, including precomputed walk and drive paths and ped traces.
-It also writes `dist/megacorp_v0.6.0.zip` for local use; that
+It also writes `dist/megacorp_v0.6.1.zip` for local use; that
 archive is not a deliverable.
 
 The same steps by hand:

@@ -403,11 +403,30 @@ function draw() {
 }
 
 function opaque(atlasX, atlasY) {
-  if (atlasX < 0 || atlasY < 0 || atlasX >= atlasWidth) {
+  if (!atlasPixels || atlasX < 0 || atlasY < 0 || atlasX >= atlasWidth) {
     return false;
   }
   const index = (atlasY * atlasWidth + atlasX) * 4 + 3;
   return atlasPixels[index] > 16;
+}
+
+// Used when the atlas pixels cannot be read (a tainted canvas).
+// The diamond sits on the bottom of the cell; walls rise above it.
+function hitsFootprint(localX, localY, level) {
+  const tw = tileset.tile_width;
+  const dh = tileset.diamond_height;
+  const ch = tileset.cell_height;
+  const cx = tw / 2;
+  const cy = ch - dh / 2;
+  const nx = Math.abs(localX + 0.5 - cx) / (tw / 2);
+  const ny = Math.abs(localY + 0.5 - cy) / (dh / 2);
+  if (nx + ny <= 1) {
+    return true;
+  }
+  const columnTop = cy - dh / 2 - level * tileset.level_px;
+  return localY >= columnTop
+    && localY <= cy
+    && Math.abs(localX + 0.5 - cx) <= tw * 0.28;
 }
 
 function pickIso(px, py) {
@@ -424,10 +443,16 @@ function pickIso(px, py) {
         continue;
       }
       const cell = cellAt(mapData, x, y);
-      const tile = tileset.byId[cell.tileId];
       const localX = Math.floor((px - left) / scale);
       const localY = Math.floor((py - top) / scale);
-      if (opaque(tile.column * tw + localX, tile.row * ch + localY)) {
+      let hit = false;
+      if (atlasPixels) {
+        const tile = tileset.byId[cell.tileId];
+        hit = opaque(tile.column * tw + localX, tile.row * ch + localY);
+      } else {
+        hit = hitsFootprint(localX, localY, cell.level);
+      }
+      if (hit) {
         return { x, y };
       }
     }
@@ -456,6 +481,18 @@ function showCell(x, y) {
     `  tile ${cell.tileId}  walk ${walk}  drive ${drive}`;
 }
 
+function loadAtlas(src, crossOrigin) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    if (crossOrigin) {
+      image.crossOrigin = "anonymous";
+    }
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("atlas image failed"));
+    image.src = src;
+  });
+}
+
 async function loadTileset() {
   const response = await fetch("assets/tiles.json");
   if (!response.ok) {
@@ -466,19 +503,26 @@ async function loadTileset() {
   index.tiles.forEach((tile) => {
     byId[tile.id] = tile;
   });
-  const image = new Image();
-  await new Promise((resolve, reject) => {
-    image.onload = resolve;
-    image.onerror = reject;
-    image.src = index.atlas;
-  });
+  let image;
+  try {
+    image = await loadAtlas(index.atlas, true);
+  } catch (err) {
+    image = await loadAtlas(index.atlas, false);
+  }
   const scratch = document.createElement("canvas");
   scratch.width = image.width;
   scratch.height = image.height;
   const ctx = scratch.getContext("2d");
   ctx.drawImage(image, 0, 0);
-  atlasPixels = ctx.getImageData(0, 0, image.width, image.height).data;
   atlasWidth = image.width;
+  atlasPixels = null;
+  try {
+    atlasPixels = ctx.getImageData(0, 0, image.width, image.height).data;
+  } catch (err) {
+    // WebKit taints a canvas that drew a cross-origin atlas and throws
+    // SecurityError. Hover then uses the diamond instead of alpha.
+    atlasPixels = null;
+  }
   tileset = {
     tile_width: index.tile_width,
     diamond_height: index.diamond_height,
@@ -513,7 +557,13 @@ function canvasPoint(event) {
 }
 
 async function main() {
-  await loadTileset();
+  try {
+    await loadTileset();
+  } catch (err) {
+    // A failed atlas read must not skip the map. Flat view still draws.
+    tileset = null;
+    atlasPixels = null;
+  }
   const indexResponse = await fetch("data/index.json");
   if (!indexResponse.ok) {
     throw new Error(indexResponse.statusText);
