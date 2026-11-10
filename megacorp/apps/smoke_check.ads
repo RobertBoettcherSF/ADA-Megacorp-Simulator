@@ -15,7 +15,7 @@
 --  along with this program.  If not, see
 --  <https://www.gnu.org/licenses/>.
 
---  Tiny helper for the 0.1.0 smoke test. Not part of the core.
+--  Tiny helper for the smoke test. Not part of the core.
 package Smoke_Check is
    procedure Expect (Condition : Boolean; Name : String)
      with Pre => Name'Length > 0;
