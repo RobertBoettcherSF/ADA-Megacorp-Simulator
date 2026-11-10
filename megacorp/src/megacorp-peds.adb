@@ -155,9 +155,9 @@ package body Megacorp.Peds is
       if Group (Index).State = Arrived then
          return;
       end if;
+      --  A finished route stays as it is. Standing stays standing,
+      --  so a halt is not turned into an arrival on the next tick.
       if Group (Index).Cursor >= Group (Index).Route.Last_Index then
-         Group (Index).State := Arrived;
-         Group (Index).Along := 0;
          return;
       end if;
       Next := Group (Index).Route (Group (Index).Cursor + 1);
@@ -286,6 +286,90 @@ package body Megacorp.Peds is
    begin
       return P.Speed;
    end Speed_Of;
+
+   function Place
+     (Who : Ped_Id;
+      At_Point : Map.Point;
+      M : Map.City;
+      Speed : Positive := Default_Speed) return Ped
+   is
+      pragma Unreferenced (M);
+      P : Ped;
+   begin
+      P.Ident := Who;
+      P.X := At_Point.X;
+      P.Y := At_Point.Y;
+      P.Goal_X := At_Point.X;
+      P.Goal_Y := At_Point.Y;
+      P.Along := 0;
+      P.Speed := Speed;
+      P.Wait := 0;
+      P.Cursor := 1;
+      P.Facing := Map.South;
+      P.State := Standing;
+      P.Route.Append (At_Point);
+      return P;
+   end Place;
+
+   procedure Set_Facing (P : in out Ped; Dir : Map.Eight_Way) is
+   begin
+      P.Facing := Dir;
+   end Set_Facing;
+
+   procedure Halt (P : in out Ped) is
+   begin
+      P.Along := 0;
+      P.Wait := 0;
+      P.Cursor := 1;
+      P.Goal_X := P.X;
+      P.Goal_Y := P.Y;
+      P.State := Standing;
+      P.Route.Clear;
+      P.Route.Append ((X => P.X, Y => P.Y));
+   end Halt;
+
+   procedure Command_Walk
+     (Group : in out Crowd;
+      Index : Positive;
+      Goal : Map.Point;
+      M : Map.City;
+      Accepted : out Boolean)
+   is
+      Here  : constant Map.Point :=
+        (X => Group (Index).X, Y => Group (Index).Y);
+      Route : Path.Result;
+   begin
+      Group (Index).Along := 0;
+      Group (Index).Wait := 0;
+      Group (Index).Goal_X := Goal.X;
+      Group (Index).Goal_Y := Goal.Y;
+      if Here = Goal then
+         Group (Index).Route.Clear;
+         Group (Index).Route.Append (Here);
+         Group (Index).Cursor := 1;
+         Group (Index).State := Arrived;
+         Accepted := True;
+         return;
+      end if;
+      Route := Path.Find (M, Here, Goal, Path.Walk);
+      if Path.Kind (Route) /= Path.Found then
+         Accepted := False;
+         return;
+      end if;
+      Group (Index).Route.Clear;
+      for I in 1 .. Path.Length (Route) loop
+         Group (Index).Route.Append (Path.Step (Route, I));
+      end loop;
+      Group (Index).Cursor := 1;
+      if Path.Length (Route) = 1 then
+         Group (Index).State := Arrived;
+      else
+         Group (Index).State := Standing;
+         Group (Index).Facing :=
+           Facing_Of (Here, Path.Step (Route, 2));
+      end if;
+      Accepted := True;
+   end Command_Walk;
 
    function Ticks_To_Cross (Speed : Positive) return Positive is
       Progress : Natural := 0;

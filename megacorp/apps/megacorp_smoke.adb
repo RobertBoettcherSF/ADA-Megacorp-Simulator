@@ -20,6 +20,7 @@ with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Containers;
 with Ada.Strings.Fixed;
+with Megacorp.Actions;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Host;
@@ -52,9 +53,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.6.1"
+     (Megacorp.Version = "0.7.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.6.1");
+      "version 0.7.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -556,6 +557,214 @@ begin
          and then West_Home
          and then Meet = Same,
          "two peds pass and both arrive");
+   end;
+
+   declare
+      package Map renames Megacorp.Map;
+      package Peds renames Megacorp.Peds;
+      package Act renames Megacorp.Actions;
+      use type Act.Kind;
+      use type Act.Shot_Lists.Vector;
+      use type Map.Eight_Way;
+      use type Peds.State_Kind;
+
+      Lane : constant Map.City := Map.Blank (1, 6);
+      Open : constant Map.City := Map.Blank (3, 3);
+      Hall : constant Map.City := Map.Blank (6, 3);
+      Wall : Map.City := Map.Blank (5, 3);
+      Water_Tile : constant Map.Tile :=
+        (Kind => Map.Water, Level => 0,
+         Walkable => False, Drivable => False);
+      Solo : Act.Cast (1 .. 1);
+      Pair : Act.Cast (1 .. 2);
+      Waiter : Act.Cast (1 .. 1);
+      Extra : Act.Cast (1 .. 1);
+      Blocked : Act.Cast (1 .. 1);
+      Case_Item : Act.Bag (1 .. 1);
+      Gear : Act.Bag (1 .. 1);
+      First : Act.Shot_Lists.Vector;
+      Again : Act.Shot_Lists.Vector;
+      Meet : Act.Shot_Lists.Vector;
+      Same : Act.Shot_Lists.Vector;
+      Phase : Natural := 0;
+      Ordered : Boolean := True;
+      Picked : Boolean := False;
+      At_Case : Boolean := False;
+      Saw_Follow : Boolean := False;
+   begin
+      Case_Item (1) := (Ident => 1, X => 1, Y => 4, Here => True);
+      Solo (1) := Act.Recruit (1, (X => 1, Y => 1), Lane);
+      Act.Order
+        (Solo, 1,
+         (1 => Act.Make_Walk ((X => 1, Y => 2)),
+          2 => Act.Make_Wait (2),
+          3 => Act.Make_Turn (Map.North),
+          4 => Act.Make_Walk ((X => 1, Y => 4)),
+          5 => Act.Make_Pick (1)),
+         Act.Replace);
+      First := Act.Run (Lane, Solo, Case_Item, 80);
+      Again := Act.Run (Lane, Solo, Case_Item, 80);
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Has_Action then
+            declare
+               Text : constant String :=
+                 Act.Token_Strings.To_String (First (I).Action);
+            begin
+               if Text'Length >= 7
+                 and then Text (Text'First .. Text'First + 6) = "walk_to"
+               then
+                  if Phase = 0 then
+                     Phase := 1;
+                  elsif Phase = 3 then
+                     Phase := 4;
+                  elsif Phase /= 1 and then Phase /= 4 then
+                     Ordered := False;
+                  end if;
+               elsif Text'Length >= 4
+                 and then Text (Text'First .. Text'First + 3) = "wait"
+               then
+                  if Phase = 1 then
+                     Phase := 2;
+                  elsif Phase /= 2 then
+                     Ordered := False;
+                  end if;
+               elsif Text'Length >= 7
+                 and then Text (Text'First .. Text'First + 6) = "turn_to"
+               then
+                  if Phase = 2 then
+                     Phase := 3;
+                  elsif Phase /= 3 then
+                     Ordered := False;
+                  end if;
+               elsif Text'Length >= 7
+                 and then Text (Text'First .. Text'First + 6) = "pick_up"
+               then
+                  if Phase = 4 then
+                     Phase := 5;
+                  else
+                     Ordered := False;
+                  end if;
+               end if;
+            end;
+         end if;
+         if not First (I).Item_Here
+           and then First (I).X = 1
+           and then First (I).Y = 4
+         then
+            Picked := True;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Ordered and then Phase = 5 and then Picked
+         and then First = Again,
+         "actions run in order");
+
+      for Y in 1 .. 3 loop
+         Map.Set_Tile (Wall, 3, Y, Water_Tile);
+      end loop;
+      Blocked (1) := Act.Recruit (1, (X => 1, Y => 2), Wall);
+      Act.Order
+        (Blocked, 1,
+         (1 => Act.Make_Walk ((X => 5, Y => 2)),
+          2 => Act.Make_Wait (3)),
+         Act.Replace);
+      Smoke_Check.Expect
+        (Act.Length (Blocked (1)) = 0
+         and then Act.Is_Pending (Blocked (1)),
+         "order waits for the next tick");
+      Act.Tick (Blocked, Wall, Case_Item);
+      Smoke_Check.Expect
+        (Act.Length (Blocked (1)) = 0
+         and then not Act.Is_Pending (Blocked (1))
+         and then Act.Ped_State (Blocked (1)) = Peds.Standing
+         and then Act.Ped_X (Blocked (1)) = 1
+         and then Act.Ped_Y (Blocked (1)) = 2,
+         "failed walk clears the queue");
+
+      Waiter (1) := Act.Recruit (1, (X => 2, Y => 2), Open);
+      Act.Order
+        (Waiter, 1,
+         (1 => Act.Make_Wait (5),
+          2 => Act.Make_Turn (Map.South)),
+         Act.Replace);
+      Act.Tick (Waiter, Open, Case_Item);
+      Act.Order
+        (Waiter, 1,
+         (1 => Act.Make_Turn (Map.North)),
+         Act.Replace);
+      Smoke_Check.Expect
+        (Act.Is_Pending (Waiter (1))
+         and then Act.Length (Waiter (1)) = 2
+         and then Act.Front (Waiter (1)).Which = Act.Wait
+         and then Act.Ped_Facing (Waiter (1)) = Map.South,
+         "replace is still pending");
+      Act.Tick (Waiter, Open, Case_Item);
+      Smoke_Check.Expect
+        (not Act.Is_Pending (Waiter (1))
+         and then Act.Length (Waiter (1)) = 0
+         and then Act.Ped_Facing (Waiter (1)) = Map.North,
+         "replace takes effect on the next tick");
+
+      Extra (1) := Act.Recruit (1, (X => 2, Y => 2), Open);
+      Act.Order
+        (Extra, 1, (1 => Act.Make_Wait (4)), Act.Replace);
+      Act.Tick (Extra, Open, Case_Item);
+      Act.Order
+        (Extra, 1, (1 => Act.Make_Turn (Map.East)), Act.Append);
+      Smoke_Check.Expect
+        (Act.Is_Pending (Extra (1))
+         and then Act.Length (Extra (1)) = 1
+         and then Act.Front (Extra (1)).Which = Act.Wait,
+         "append waits for the next tick");
+      Act.Tick (Extra, Open, Case_Item);
+      Smoke_Check.Expect
+        (not Act.Is_Pending (Extra (1))
+         and then Act.Length (Extra (1)) = 2
+         and then Act.Front (Extra (1)).Which = Act.Wait
+         and then Act.At_Queue (Extra (1), 2).Which = Act.Turn_To,
+         "append adds to the queue");
+
+      Gear (1) := (Ident => 1, X => 6, Y => 2, Here => True);
+      Pair (1) := Act.Recruit (1, (X => 1, Y => 2), Hall);
+      Pair (2) := Act.Recruit (2, (X => 1, Y => 1), Hall);
+      Act.Order
+        (Pair, 1,
+         (1 => Act.Make_Walk ((X => 4, Y => 2))),
+         Act.Replace);
+      Act.Order
+        (Pair, 2,
+         (1 => Act.Make_Walk ((X => 1, Y => 3)),
+          2 => Act.Make_Wait (1),
+          3 => Act.Make_Turn (Map.East),
+          4 => Act.Make_Follow (1),
+          5 => Act.Make_Walk ((X => 6, Y => 2)),
+          6 => Act.Make_Pick (1)),
+         Act.Replace);
+      Meet := Act.Run (Hall, Pair, Gear, 400);
+      Same := Act.Run (Hall, Pair, Gear, 400);
+      for I in Meet.First_Index .. Meet.Last_Index loop
+         if Meet (I).Has_Action then
+            declare
+               Text : constant String :=
+                 Act.Token_Strings.To_String (Meet (I).Action);
+            begin
+               if Text'Length >= 6
+                 and then Text (Text'First .. Text'First + 5) = "follow"
+               then
+                  Saw_Follow := True;
+               end if;
+            end;
+         end if;
+         if not Meet (I).Item_Here
+           and then Meet (I).X = 6
+           and then Meet (I).Y = 2
+         then
+            At_Case := True;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Saw_Follow and then At_Case and then Meet = Same,
+         "follow then pick up, traces match");
    end;
 
    if Smoke_Check.Failure_Count = 0 then

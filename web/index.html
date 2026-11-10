@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Megacorp Simulator 0.6.1</title>
+  <title>Megacorp Simulator 0.7.0</title>
   <style>
     :root {
       color-scheme: dark;
@@ -77,7 +77,7 @@
 <body>
   <header>
     <h1>Megacorp Simulator</h1>
-    <p class="meta">version <span id="version">0.6.1</span>
+    <p class="meta">version <span id="version">0.7.0</span>
       · seed <span id="seed-label">…</span></p>
   </header>
   <div class="controls">
@@ -91,6 +91,7 @@
     <button id="pause" type="button">Pause</button>
     <button id="step" type="button">Step</button>
     <span>Tick <span id="tick">0</span></span>
+    <span id="queue">No action queue on this trace.</span>
     <button id="view" type="button">Flat view</button>
     <span>
       <button id="zoom-out" type="button">−</button>
@@ -102,11 +103,12 @@
   <p id="path-status" class="readout">Paths and ped motion are precomputed by Ada.</p>
   <p id="hover" class="readout">Hover a tile.</p>
   <div id="stage"><canvas id="map"></canvas></div>
-  <p class="note">Paths and ped motion are precomputed by Ada.
-    Play, pause, and step replay that trace. The marker is the ped
-    and the stroke is its facing. A click snaps to the nearest
-    prepared start or goal. The layout is the seeded test map, not
-    the later city-block generator.</p>
+  <p class="note">Paths, ped motion, and action queues are precomputed
+    by Ada. Play, pause, and step replay that trace. The marker is
+    the ped and the stroke is its facing. The gold diamond is an item
+    until it is picked up. A click snaps to the nearest prepared
+    start or goal. The layout is the seeded test map, not the later
+    city-block generator.</p>
   <script src="js/map.js"></script>
 </body>
 </html>

@@ -17,12 +17,14 @@
 
 with Ada.Directories;
 with Ada.Text_IO;
+with Megacorp.Actions;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Path;
 with Megacorp.Peds;
 
 package body Megacorp.Map is
+   package Act renames Megacorp.Actions;
    package Placeholder renames Megacorp.Assets.Placeholder;
    package Disk renames Megacorp.Data.Virtual_FS.Native;
    use type Path.Status;
@@ -89,6 +91,31 @@ package body Megacorp.Map is
       How : Path.Mode;
       Start, Goal : Point;
       Last_Item : Boolean);
+   type Mission_Points is record
+      Leader_At   : Point;
+      Leader_Goal : Point;
+      Follower_At : Point;
+      Waypoint    : Point;
+      Item_At     : Point;
+   end record;
+   function Route_Length
+     (M : City; From, To : Point) return Natural;
+   function Seek
+     (M : City; Origin : Point; Low, High : Positive) return Point;
+   function Side_Tile
+     (M : City; Origin, Avoid : Point) return Point;
+   function Mission_Of (M : City) return Mission_Points;
+   function Script (M : City) return Act.Shot_Lists.Vector;
+   procedure Write_Action_Frame
+     (File : Ada.Text_IO.File_Type;
+      Shot : Act.Snapshot;
+      Last_Item : Boolean);
+   procedure Write_Script_Ped
+     (File : Ada.Text_IO.File_Type;
+      Trace : Act.Shot_Lists.Vector;
+      Who : Peds.Ped_Id;
+      Last_Item : Boolean);
+   procedure Write_Script (File : Ada.Text_IO.File_Type; M : City);
    procedure Write_Paths
      (File : Ada.Text_IO.File_Type; M : City);
    procedure Write_Map_File
@@ -661,6 +688,214 @@ package body Megacorp.Map is
       end if;
    end Put_Route;
 
+   function Route_Length
+     (M : City; From, To : Point) return Natural
+   is
+      Route : constant Path.Result :=
+        Path.Find (M, From, To, Path.Walk);
+   begin
+      if Path.Kind (Route) /= Path.Found then
+         return 0;
+      end if;
+      return Path.Length (Route);
+   end Route_Length;
+
+   function Seek
+     (M : City; Origin : Point; Low, High : Positive) return Point
+   is
+      X : Integer;
+      Y : Integer;
+      Steps : Natural;
+   begin
+      for DY in -20 .. 20 loop
+         for DX in -20 .. 20 loop
+            X := Origin.X + DX;
+            Y := Origin.Y + DY;
+            if In_Bounds (M, X, Y)
+              and then (X /= Origin.X or else Y /= Origin.Y)
+              and then M.Cell (X, Y).Walkable
+            then
+               Steps := Route_Length
+                 (M, Origin, (X => X, Y => Y));
+               if Steps >= Low and then Steps <= High then
+                  return (X => X, Y => Y);
+               end if;
+            end if;
+         end loop;
+      end loop;
+      pragma Assert (False);
+      return Origin;
+   end Seek;
+
+   function Side_Tile
+     (M : City; Origin, Avoid : Point) return Point
+   is
+      Next : Point;
+   begin
+      for Dir in Four_Way loop
+         if Has_Neighbour_4 (M, Origin.X, Origin.Y, Dir) then
+            Next := Neighbour_4 (M, Origin.X, Origin.Y, Dir);
+            if Next /= Avoid
+              and then M.Cell (Next.X, Next.Y).Walkable
+            then
+               return Next;
+            end if;
+         end if;
+      end loop;
+      return Seek (M, Origin, 2, 4);
+   end Side_Tile;
+
+   function Mission_Of (M : City) return Mission_Points is
+      Start  : constant Point := Locate (M, Pavement, False);
+      Goal   : constant Point := Seek (M, Start, 4, 7);
+      Route  : constant Path.Result :=
+        Path.Find (M, Start, Goal, Path.Walk);
+      Second : Point;
+   begin
+      pragma Assert (Path.Kind (Route) = Path.Found);
+      pragma Assert (Path.Length (Route) > 1);
+      Second := Path.Step (Route, 2);
+      return
+        (Leader_At => Start,
+         Leader_Goal => Goal,
+         Follower_At => Side_Tile (M, Start, Second),
+         Waypoint => Seek (M, Side_Tile (M, Start, Second), 2, 4),
+         Item_At => Seek (M, Goal, 2, 5));
+   end Mission_Of;
+
+   function Script (M : City) return Act.Shot_Lists.Vector is
+      Plan  : constant Mission_Points := Mission_Of (M);
+      Group : Act.Cast (1 .. 2);
+      Items : Act.Bag (1 .. 1);
+   begin
+      Group (1) := Act.Recruit (1, Plan.Leader_At, M);
+      Group (2) := Act.Recruit (2, Plan.Follower_At, M);
+      Items (1) :=
+        (Ident => 1,
+         X => Plan.Item_At.X,
+         Y => Plan.Item_At.Y,
+         Here => True);
+      Act.Order
+        (Group, 1,
+         (1 => Act.Make_Walk (Plan.Leader_Goal)),
+         Act.Replace);
+      Act.Order
+        (Group, 2,
+         (1 => Act.Make_Walk (Plan.Waypoint),
+          2 => Act.Make_Wait (2),
+          3 => Act.Make_Turn (East),
+          4 => Act.Make_Follow (1),
+          5 => Act.Make_Walk (Plan.Item_At),
+          6 => Act.Make_Pick (1)),
+         Act.Replace);
+      return Act.Run (M, Group, Items, 800);
+   end Script;
+
+   procedure Write_Action_Frame
+     (File : Ada.Text_IO.File_Type;
+      Shot : Act.Snapshot;
+      Last_Item : Boolean)
+   is
+   begin
+      Ada.Text_IO.Put (File, "          {""t"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.Tick)));
+      Ada.Text_IO.Put (File, ",""x"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.X)));
+      Ada.Text_IO.Put (File, ",""y"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.Y)));
+      Ada.Text_IO.Put (File, ",""along"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.Along)));
+      Ada.Text_IO.Put (File, ",""facing"":""");
+      Ada.Text_IO.Put (File, Facing_Token (Shot.Facing));
+      Ada.Text_IO.Put (File, """,""state"":""");
+      Ada.Text_IO.Put (File, State_Token (Shot.State));
+      Ada.Text_IO.Put (File, """,""action"":""");
+      if Shot.Has_Action then
+         Ada.Text_IO.Put
+           (File, Act.Token_Strings.To_String (Shot.Action));
+      end if;
+      Ada.Text_IO.Put (File, """,""queue"":[");
+      for I in 1 .. Shot.Rest_Count loop
+         if I > 1 then
+            Ada.Text_IO.Put (File, ",");
+         end if;
+         Ada.Text_IO.Put (File, """");
+         Ada.Text_IO.Put
+           (File, Act.Token_Strings.To_String (Shot.Rest (I)));
+         Ada.Text_IO.Put (File, """");
+      end loop;
+      Ada.Text_IO.Put (File, "],""item_present"":");
+      if Shot.Item_Here then
+         Ada.Text_IO.Put (File, "true}");
+      else
+         Ada.Text_IO.Put (File, "false}");
+      end if;
+      if Last_Item then
+         Ada.Text_IO.New_Line (File);
+      else
+         Ada.Text_IO.Put_Line (File, ",");
+      end if;
+   end Write_Action_Frame;
+
+   procedure Write_Script_Ped
+     (File : Ada.Text_IO.File_Type;
+      Trace : Act.Shot_Lists.Vector;
+      Who : Peds.Ped_Id;
+      Last_Item : Boolean)
+   is
+      Count : Natural := 0;
+      Seen  : Natural := 0;
+   begin
+      for I in Trace.First_Index .. Trace.Last_Index loop
+         if Trace (I).Ident = Who then
+            Count := Count + 1;
+         end if;
+      end loop;
+      Ada.Text_IO.Put_Line (File, "      {");
+      Ada.Text_IO.Put (File, "        ""id"": ");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Integer (Who))));
+      Ada.Text_IO.Put_Line (File, ",");
+      Ada.Text_IO.Put_Line (File, "        ""frames"": [");
+      for I in Trace.First_Index .. Trace.Last_Index loop
+         if Trace (I).Ident = Who then
+            Seen := Seen + 1;
+            Write_Action_Frame (File, Trace (I), Seen = Count);
+         end if;
+      end loop;
+      Ada.Text_IO.Put_Line (File, "        ]");
+      if Last_Item then
+         Ada.Text_IO.Put_Line (File, "      }");
+      else
+         Ada.Text_IO.Put_Line (File, "      },");
+      end if;
+   end Write_Script_Ped;
+
+   procedure Write_Script (File : Ada.Text_IO.File_Type; M : City) is
+      Plan  : constant Mission_Points := Mission_Of (M);
+      Trace : constant Act.Shot_Lists.Vector := Script (M);
+   begin
+      pragma Assert (not Trace.Is_Empty);
+      pragma Assert (not Trace (Trace.Last_Index).Item_Here);
+      Ada.Text_IO.Put_Line (File, "    {");
+      Ada.Text_IO.Put_Line
+        (File, "      ""label"": ""Scripted mission"",");
+      Ada.Text_IO.Put (File, "      ""steps_per_tile"": ");
+      Ada.Text_IO.Put
+        (File, Trim (Integer'Image (Peds.Steps_Per_Tile)));
+      Ada.Text_IO.Put_Line (File, ",");
+      Ada.Text_IO.Put (File, "      ""item"": {""id"": 1, ""name"": ");
+      Ada.Text_IO.Put (File, """case"", ""x"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Plan.Item_At.X)));
+      Ada.Text_IO.Put (File, ", ""y"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Plan.Item_At.Y)));
+      Ada.Text_IO.Put_Line (File, "},");
+      Ada.Text_IO.Put_Line (File, "      ""peds"": [");
+      Write_Script_Ped (File, Trace, 1, False);
+      Write_Script_Ped (File, Trace, 2, True);
+      Ada.Text_IO.Put_Line (File, "      ]");
+      Ada.Text_IO.Put_Line (File, "    }");
+   end Write_Script;
+
    procedure Write_Paths
      (File : Ada.Text_IO.File_Type; M : City)
    is
@@ -669,6 +904,7 @@ package body Megacorp.Map is
       Road_A : constant Point := Locate (M, Road, False);
       Road_B : constant Point := Locate (M, Road, True);
       River  : constant Point := Locate (M, Water, False);
+      Plan   : constant Mission_Points := Mission_Of (M);
    begin
       Ada.Text_IO.Put_Line (File, "  ""paths"": [");
       Put_Route
@@ -679,7 +915,10 @@ package body Megacorp.Map is
          Road_A, Road_B, False);
       Put_Route
         (File, M, "Walk into the river", Path.Walk,
-         Walk_A, River, True);
+         Walk_A, River, False);
+      Put_Route
+        (File, M, "Scripted mission", Path.Walk,
+         Plan.Follower_At, Plan.Item_At, True);
       Ada.Text_IO.Put_Line (File, "  ]");
    end Write_Paths;
 
@@ -806,7 +1045,8 @@ package body Megacorp.Map is
          Ada.Text_IO.Put_Line (File, "      ""peds"": [");
          Write_Ped_Trace (File, Trace, 1, True);
          Ada.Text_IO.Put_Line (File, "      ]");
-         Ada.Text_IO.Put_Line (File, "    }");
+         Ada.Text_IO.Put_Line (File, "    },");
+         Write_Script (File, M);
          Ada.Text_IO.Put_Line (File, "  ]");
       end;
    end Write_Motion;

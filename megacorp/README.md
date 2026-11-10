@@ -1,7 +1,7 @@
-# Megacorp Simulator 0.6.1
+# Megacorp Simulator 0.7.0
 
-Headless Ada core for Megacorp Simulator. Version 0.6.0 adds ped
-movement on a fixed tick (design items 1–6). Version 0.6.1 keeps the
+Headless Ada core for Megacorp Simulator. Version 0.7.0 adds an
+action queue on each ped (design items 1–7). Version 0.6.1 keeps the
 browser page working when WebKit refuses to read the atlas pixels.
 Later packages are
 still specs. FreeSynd stays elsewhere in the repository as a logic
@@ -44,7 +44,7 @@ That builds with `gprbuild -P megacorp.gpr -p`, regenerates the
 tileset with `tools/gen_tileset.py`, runs `bin/megacorp` and
 `bin/megacorp_smoke`, and rewrites `../web/data/` from the Ada map
 export, including precomputed walk and drive paths and ped traces.
-It also writes `dist/megacorp_v0.6.1.zip` for local use; that
+It also writes `dist/megacorp_v0.7.0.zip` for local use; that
 archive is not a deliverable.
 
 The same steps by hand:
@@ -79,7 +79,7 @@ Build products (`obj/`, `lib/`, `bin/`) are not committed. The
 exported JSON under `web/data/` is committed so the page can be opened
 without a local build.
 
-## What 0.6.0 contains
+## What 0.7.0 contains
 
 Real code: version, generator parameters (defaults 4 corporations,
 40 regions, 128 by 128 city maps), the play-mode re-roll rule, a
@@ -112,16 +112,28 @@ The state is standing, walking, or arrived. Peds occupy tiles. The
 ped with the greater id waits, then repaths around occupied tiles;
 the lower id keeps its route. The same inputs produce the same trace.
 
+`Megacorp.Actions` queues walk, wait, turn, follow, and pick-up.
+The queue holds at most 8 actions. Each tick runs the front action.
+The next action starts on the following tick. A failure clears the
+queue and the ped stands. An order replaces the queue or appends,
+and takes effect on the next tick. `Walk_To` uses the ped movement,
+including blocking and repathing. A case is an item on a tile.
+
 `web/index.html` draws the exported seeds. Flat view is one colour per
 terrain. Isometric view uses the atlas and the exported tile id, back
 to front, with building stacks. Each seed includes Ada-computed walk
 and drive paths, plus a walk into the river that has no path, and a
 per-tick trace for the walk. `encounter.json` is two peds meeting.
 Play, pause, and step replay the trace and draw a marker with its
-facing. The page does not simulate. Zoom and hover work in both views.
+facing. Each seed also has a scripted mission: one ped walks, waits,
+turns, follows a second ped, and picks up a case. The page shows the
+current action and the remaining queue beside the tick counter, and
+draws the case until it is picked up. The page does not simulate.
+Zoom and hover work in both views. If the browser will not read the
+atlas pixels, hover uses the tile diamond and the map still loads.
 
 Shells only, for later items: `Types`, `Assets`, `World`, `World.Gen`,
-`Map.Gen`, `Actions`, `Behaviour`, `Weapons`, `Shots`, `Vehicles`,
+`Map.Gen`, `Behaviour`, `Weapons`, `Shots`, `Vehicles`,
 `Mission`, `Mission.Gen`, `Agents`, `Research`, `Session`, `Save`,
 `API`. There is no Syndicate asset package.
 
