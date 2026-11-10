@@ -1,0 +1,8 @@
+{
+  "version": "0.3.0",
+  "maps": [
+    {"seed": 1, "file": "seed-1.json"},
+    {"seed": 42, "file": "seed-42.json"},
+    {"seed": 100, "file": "seed-100.json"}
+  ]
+}

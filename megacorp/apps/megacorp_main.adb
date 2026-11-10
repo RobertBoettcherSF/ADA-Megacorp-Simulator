@@ -15,8 +15,10 @@
 --  along with this program.  If not, see
 --  <https://www.gnu.org/licenses/>.
 
+with Ada.Command_Line;
 with Ada.Text_IO;
 with Megacorp.Host;
+with Megacorp.Map;
 with Megacorp.Parameters;
 
 procedure Megacorp_Main is
@@ -59,5 +61,24 @@ begin
    end if;
    if Visited_Stays then
       Ada.Text_IO.Put_Line ("visited regions stay as left");
+   end if;
+
+   if Ada.Command_Line.Argument_Count = 2
+     and then Ada.Command_Line.Argument (1) = "--export"
+   then
+      Megacorp.Map.Export_Maps
+        (Ada.Command_Line.Argument (2), Megacorp.Version);
+      Ada.Text_IO.Put_Line
+        ("exported maps to " & Ada.Command_Line.Argument (2));
+   elsif Ada.Command_Line.Argument_Count = 0 then
+      Ada.Text_IO.Put_Line ("sample map seed 42 (test layout)");
+      Ada.Text_IO.Put_Line
+        ("legend: . open  + road  = pavement  B building  ~ water");
+      Megacorp.Map.Put_Sample (Megacorp.Map.Test_Layout (42, P));
+   else
+      Ada.Text_IO.Put_Line
+        (Ada.Text_IO.Current_Error,
+         "usage: megacorp [--export DIR]");
+      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
    end if;
 end Megacorp_Main;
