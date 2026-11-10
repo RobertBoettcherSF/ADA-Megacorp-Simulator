@@ -2,6 +2,20 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.2.0, item 2
+
+`Megacorp.RNG` is implemented. The generator is **xoshiro256\*\*** (Blackman and Vigna, 2018, public domain). A 64-bit seed is expanded with **SplitMix64** (Vigna, 2015, the fixed-increment form of Java 8's SplittableRandom). Both are unsigned 64-bit integer arithmetic only: no `Ada.Numerics` generators and no floating point in the state, so the same seed yields the same stream on native GNAT and, later, on WebAssembly.
+
+Child streams are not jumps of a parent cursor. `Derive (Parent, Key)` is SplitMix64's mix function applied to `Parent + 16#9E37_79B9_7F4A_7C15# * Key`. The mix is a bijection and the multiplier is odd, so distinct keys from one parent produce distinct child seeds. `Child` reads the parent's origin seed, not how far that generator has been drawn, so re-deriving one region leaves every other stream where it was. Domain keys are `Domain'Pos * 2**32 + Index` with `Domain` ordered `World`, `Region`, `City`, `Block`, `Mission`. A later generator version can be folded into the key when unvisited regions are re-rolled.
+
+Reference vectors, checked by the smoke test:
+
+- xoshiro256\*\* state `(1, 2, 3, 4)`, first four outputs (the sequence published with the Rust `rand_xoshiro` reference test, produced from the reference C): `16#0000_0000_0000_2D00#`, `0`, `16#0000_0000_5A00_7080#`, `16#10E0_0000_0000_9D80#`.
+- SplitMix64 started at 0, first four outputs, which are also the state words of `Make (0)`: `16#E220_A839_7B1D_CDAF#`, `16#6E78_9E6A_A1B9_65F4#`, `16#06C4_5D18_8009_454F#`, `16#F88B_B8A8_724C_81EC#`.
+- `Make (0)` then `Next`, four times: `16#99EC_5F36_CB75_F2B4#`, `16#BF6E_1F78_4956_452A#`, `16#1A5F_849D_4933_E6E0#`, `16#6AA5_94F1_262D_2D2C#`.
+
+Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), [splitmix64.c](https://prng.di.unimi.it/splitmix64.c).
+
 ### 2026-11-10 — Robert's decisions (override anything later in this document that conflicts)
 
 1. **Language and route.** All logic, and as much of the rest as possible, in plain Ada. JavaScript is only a thin browser layer (canvas, audio, input, storage). The Ada core is built natively first with GNAT 12.3 and gprbuild, and later compiled to WebAssembly (GNAT-LLVM / AdaWebPack). A WebSocket server is the fallback.
@@ -12,7 +26,7 @@
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Item 1 (skeleton 0.1.0) is implemented under `megacorp/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1 and 2 (version 0.2.0) are implemented under `megacorp/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -238,7 +252,7 @@ No Ada tasks or protected objects in the core (WASM runtimes still do not suppor
 - The browser accumulates real time and issues zero or more ticks per animation frame (spiral-of-death cap).
 - Tests call `Tick` N times with a recorded input stream.
 - All “random” decisions take the mission or world RNG, not the clock.
-- Hierarchical seeds: `World_Seed` → `Region_Seed` → `City_Seed` → `Block_Seed` / `Mission_Seed` via `Megacorp.RNG` child streams, so a change to one city does not reshuffle another, and a generator bugfix can bump a *local* gen version without discarding the whole world (see §7.6).
+- Hierarchical seeds: `World_Seed` → `Region_Seed` → `City_Seed` → `Block_Seed` / `Mission_Seed` via `Megacorp.RNG` child streams, so a change to one city does not reshuffle another, and a generator bugfix can bump a *local* gen version without discarding the whole world (see §7.6). The 0.2.0 implementation is xoshiro256\*\* seeded by SplitMix64; the reference vectors and the key formula are in the changelog.
 - Replay identity: same `(World_Seed, gen version, snapshot, input log)` ⇒ same simulation state.
 
 ### 6.4 Ada core ↔ browser interface
@@ -368,7 +382,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 ### Phase A — Foundation (native Ada, no browser yet)
 
 1. **Project skeleton.** GPR, `Megacorp.*` package shells, GPL headers, `Host` (log, clock), generator parameters and the play-mode re-roll rule, assertions (`-gnata`, `Pre` / `Post`, `Type_Invariant`), and a small smoke test. Depends on: nothing. Try: `gprbuild` and the smoke test on GNAT 12.3; the executable prints version 0.1.0 and the parameters. Size: small.
-2. **Deterministic RNG with child streams.** Reproducible sequences; split a world seed into region/city/block streams. Depends on: 1. Try: print two traces from the same seed; they match. Size: small.
+2. **Deterministic RNG with child streams.** Done in 0.2.0. xoshiro256\*\* seeded by SplitMix64; a child stream is a pure mix of the parent seed and a domain key (region, city, block, mission). Depends on: 1. Try: the smoke test checks the reference vectors, repeats a seed, and re-derives one region without moving another. Size: small.
 3. **Core types and an in-memory map grid.** Tiles, flags (walk/solid/shoot), entity IDs. Depends on: 1. Try: build a 8×8 room in a test and query walkability. Size: small (FreeSynd `map.cpp`/`map.h` ~465 lines, plus a cleaner model).
 4. **Virtual FS and asset interface.** Named blobs; own placeholder tileset (a handful of floor, wall, road, door, ped sprites). Depends on: 1. Try: tests load placeholders and never look for Syndicate files. Size: small.
 
