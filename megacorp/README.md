@@ -1,9 +1,9 @@
-# Megacorp Simulator 0.4.0
+# Megacorp Simulator 0.5.0
 
-Headless Ada core for Megacorp Simulator. Version 0.4.0 adds a virtual
-file system and an original isometric placeholder tileset (design
-items 1–4). Later packages are still specs. FreeSynd stays elsewhere
-in the repository as a logic reference and is not built here.
+Headless Ada core for Megacorp Simulator. Version 0.5.0 adds A*
+pathfinding on the city map (design items 1–5). Later packages are
+still specs. FreeSynd stays elsewhere in the repository as a logic
+reference and is not built here.
 
 A browser page draws maps the Ada program has already exported. It
 does not run the simulation. After this branch is on `master`:
@@ -41,8 +41,9 @@ From this directory:
 That builds with `gprbuild -P megacorp.gpr -p`, regenerates the
 tileset with `tools/gen_tileset.py`, runs `bin/megacorp` and
 `bin/megacorp_smoke`, and rewrites `../web/data/` from the Ada map
-export. It also writes `dist/megacorp_v0.4.0.zip` for local use; that
-archive is not a deliverable.
+export, including precomputed walk and drive paths. It also writes
+`dist/megacorp_v0.5.0.zip` for local use; that archive is not a
+deliverable.
 
 The same steps by hand:
 
@@ -75,7 +76,7 @@ Build products (`obj/`, `lib/`, `bin/`) are not committed. The
 exported JSON under `web/data/` is committed so the page can be opened
 without a local build.
 
-## What 0.4.0 contains
+## What 0.5.0 contains
 
 Real code: version, generator parameters (defaults 4 corporations,
 40 regions, 128 by 128 city maps), the play-mode re-roll rule, a
@@ -95,11 +96,17 @@ That layout is a stand-in until the city-block generator.
 height to a tile id. The pictures are original, produced by
 `tools/gen_tileset.py`. See `web/assets/LICENCE.txt`.
 
+`Megacorp.Path` is A* with integer costs (10 orthogonal, 14 diagonal).
+Walk uses the walkable flag. Drive uses the drivable flag. A diagonal
+step is refused when it would cut a blocked corner. The result is a
+tile list, `No_Path`, or `Budget_Exceeded`. Tie-breaking is fixed, so
+the same query repeats the same path.
+
 `web/index.html` draws the exported seeds. Flat view is one colour per
 terrain. Isometric view uses the atlas and the exported tile id, back
-to front, with building stacks. Zoom and hover work in both. Hover in
-the isometric view picks the opaque sprite under the cursor.
-JavaScript does not choose which tile id to draw.
+to front, with building stacks. Each seed includes Ada-computed walk
+and drive paths, plus a walk into the river that has no path. The
+page only draws those paths. Zoom and hover work in both views.
 
 Shells only, for later items: `Types`, `Assets`,
 `Assets.Placeholder`, `Data.Virtual_FS`, `World`, `World.Gen`,

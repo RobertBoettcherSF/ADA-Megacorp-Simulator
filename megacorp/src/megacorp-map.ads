@@ -87,6 +87,19 @@ package Megacorp.Map is
 
    --  Road grid, pavement, building blocks, and a river.
    --  The stream is the city-1 child of From. Same seed, same map.
+   function Blank (Width, Height : Positive) return City
+     with Pre =>
+       Width <= Parameters.Max_City_Map_Edge
+       and then Height <= Parameters.Max_City_Map_Edge,
+       Post =>
+         Blank'Result.Width = Width
+         and then Blank'Result.Height = Height;
+
+   procedure Set_Tile
+     (M : in out City; X, Y : Integer; Cell : Tile)
+     with Pre => In_Bounds (M, X, Y),
+       Post => Tile_At (M, X, Y) = Cell;
+
    function Test_Layout
      (From : RNG.Word; Width, Height : Positive) return City
      with Pre =>
