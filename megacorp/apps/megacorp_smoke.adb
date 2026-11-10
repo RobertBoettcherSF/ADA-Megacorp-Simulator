@@ -19,6 +19,7 @@ with Ada.Assertions;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Megacorp.Host;
+with Megacorp.Map;
 with Megacorp.Parameters;
 with Megacorp.RNG;
 with Smoke_Check;
@@ -27,6 +28,8 @@ procedure Megacorp_Smoke is
    package Params renames Megacorp.Parameters;
    package RNG renames Megacorp.RNG;
    use type RNG.Word;
+   use type Megacorp.Map.City;
+   use type Megacorp.Map.Terrain;
 
    type Sample is array (Positive range <>) of Integer;
    procedure Shuffle_Sample is new RNG.Shuffle
@@ -40,9 +43,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.2.0"
+     (Megacorp.Version = "0.3.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.2.0");
+      "version 0.3.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -216,6 +219,92 @@ begin
          and then Seen (1) and then Seen (2) and then Seen (3)
          and then Seen (4) and then Seen (5),
          "shuffle keeps every value");
+   end;
+
+   declare
+      package Map renames Megacorp.Map;
+
+      Small   : constant Map.City := Map.Test_Layout (1, 5, 5);
+      Layout  : constant Map.City := Map.Test_Layout (42, 24, 24);
+      Repeat  : constant Map.City := Map.Test_Layout (42, 24, 24);
+      Other   : constant Map.City := Map.Test_Layout (99, 24, 24);
+      Full    : constant Map.City :=
+        Map.Test_Layout (42, Defaults);
+      Here    : Map.Point;
+      Cell    : Map.Tile;
+      Seen_Water    : Boolean := False;
+      Seen_Road     : Boolean := False;
+      Seen_Building : Boolean := False;
+      Rules         : Boolean := True;
+   begin
+      Raised := False;
+      begin
+         if Map.Tile_At (Small, 0, 1).Kind = Map.Water then
+            Raised := False;
+         end if;
+      exception
+         when Ada.Assertions.Assertion_Error =>
+            Raised := True;
+      end;
+      Smoke_Check.Expect
+        (Raised
+         and then Small.Width = 5
+         and then Map.Tile_At (Small, 1, 1).Kind = Map.Open_Ground,
+         "map bounds");
+
+      Here := Map.Neighbour_4 (Small, 3, 3, Map.North);
+      Smoke_Check.Expect
+        (not Map.Has_Neighbour_4 (Small, 1, 1, Map.North)
+         and then not Map.Has_Neighbour_4 (Small, 1, 1, Map.West)
+         and then Map.Neighbour_4 (Small, 1, 1, Map.East).X = 2
+         and then Map.Neighbour_4 (Small, 1, 1, Map.East).Y = 1
+         and then Map.Neighbour_4 (Small, 1, 1, Map.South).Y = 2
+         and then Here.X = 3
+         and then Here.Y = 2
+         and then Map.Has_Neighbour_8 (Small, 3, 3, Map.South_East)
+         and then Map.Neighbour_8 (Small, 3, 3, Map.South_East).X = 4
+         and then Map.Neighbour_8 (Small, 3, 3, Map.South_East).Y = 4
+         and then not Map.Has_Neighbour_8 (Small, 1, 1, Map.North_West),
+         "map neighbours");
+
+      for Y in 1 .. Layout.Height loop
+         for X in 1 .. Layout.Width loop
+            Cell := Map.Tile_At (Layout, X, Y);
+            case Cell.Kind is
+               when Map.Water =>
+                  Seen_Water := True;
+                  Rules := Rules
+                    and then not Cell.Walkable
+                    and then not Cell.Drivable
+                    and then Cell.Level = 0;
+               when Map.Road =>
+                  Seen_Road := True;
+                  Rules := Rules
+                    and then Cell.Walkable
+                    and then Cell.Drivable;
+               when Map.Building =>
+                  Seen_Building := True;
+                  Rules := Rules
+                    and then not Cell.Walkable
+                    and then not Cell.Drivable;
+               when Map.Open_Ground | Map.Pavement =>
+                  Rules := Rules
+                    and then Cell.Walkable
+                    and then not Cell.Drivable;
+            end case;
+         end loop;
+      end loop;
+      Smoke_Check.Expect
+        (Rules and then Seen_Water and then Seen_Road
+         and then Seen_Building,
+         "test layout walkability");
+      Smoke_Check.Expect
+        (Layout = Repeat
+         and then Layout /= Other
+         and then Full.Width = 128
+         and then Full.Height = 128
+         and then Map.Layout_Seed (Full) = 42,
+         "test layout follows the seed");
    end;
 
    if Smoke_Check.Failure_Count = 0 then

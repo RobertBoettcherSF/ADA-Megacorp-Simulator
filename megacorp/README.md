@@ -1,9 +1,14 @@
-# Megacorp Simulator 0.2.0
+# Megacorp Simulator 0.3.0
 
-Headless Ada core for Megacorp Simulator. Version 0.2.0 is the
-skeleton plus a deterministic RNG (design items 1 and 2). Later
-packages are still specs. FreeSynd stays elsewhere in the repository
-as a logic reference and is not built here.
+Headless Ada core for Megacorp Simulator. Version 0.3.0 adds the city
+tile map (design items 1–3). Later packages are still specs. FreeSynd
+stays elsewhere in the repository as a logic reference and is not
+built here.
+
+A browser page draws maps the Ada program has already exported. It
+does not run the simulation. After this branch is on `master`:
+
+<https://raw.githack.com/RobertBoettcherSF/ADA-Megacorp-Simulator/master/web/index.html>
 
 The design, including Robert's decisions of 10 November 2026, is
 [`../docs/DESIGN.md`](../docs/DESIGN.md).
@@ -33,9 +38,10 @@ From this directory:
 ./build.sh
 ```
 
-That configures nothing, builds with `gprbuild -P megacorp.gpr -p`,
-runs `bin/megacorp` and `bin/megacorp_smoke`, and writes
-`dist/megacorp_v0.2.0.zip`.
+That builds with `gprbuild -P megacorp.gpr -p`, runs `bin/megacorp`
+and `bin/megacorp_smoke`, and regenerates `../web/data/` from the
+Ada map export. It also writes `dist/megacorp_v0.3.0.zip` for local
+use; that archive is not a deliverable.
 
 The same steps by hand:
 
@@ -46,8 +52,10 @@ gprbuild -P megacorp.gpr -p
 ```
 
 `megacorp.gpr` builds the static library (`megacorp_lib.gpr`) and both
-executables. `bin/megacorp` prints the version and the generator
-parameters. `bin/megacorp_smoke` exits 0 when the smoke checks pass.
+executables. `bin/megacorp` prints the version, the generator
+parameters, and a text sample of seed 42. `bin/megacorp --export DIR`
+writes `index.json` and one JSON map per fixed seed (1, 42, 100).
+`bin/megacorp_smoke` exits 0 when the smoke checks pass.
 
 Assertions and contracts are compiled in. Warnings and GNAT style
 checks are errors. The switch list is `switches.gpr`:
@@ -62,25 +70,30 @@ checks are errors. The switch list is `switches.gpr`:
 
 ## Package
 
-`dist/megacorp_v0.2.0.zip` contains the sources and the Linux x86_64
-binaries `bin/megacorp` and `bin/megacorp_smoke`. Build products
-(`obj/`, `lib/`, `bin/`) are not committed.
+Build products (`obj/`, `lib/`, `bin/`) are not committed. The
+exported JSON under `web/data/` is committed so the page can be opened
+without a local build.
 
-## What 0.2.0 contains
+## What 0.3.0 contains
 
 Real code: version, generator parameters (defaults 4 corporations,
 40 regions, 128 by 128 city maps), the play-mode re-roll rule, a
-monotonic clock, a log, and `Megacorp.RNG`.
+monotonic clock, a log, `Megacorp.RNG`, and `Megacorp.Map`.
 
 The RNG is xoshiro256\*\* seeded by SplitMix64. Child streams come
-from the parent seed and a key (world, region, city, block, mission),
-so re-deriving one region does not move any other stream. Draws are
-unbiased integers, a boolean with a rational probability, an integer
-picked from a range, and a Fisher-Yates shuffle. Reference vectors
-are in `docs/DESIGN.md`.
+from the parent seed and a key (world, region, city, block, mission).
+
+The map is one city. Each tile stores terrain, height, and walkable
+and drivable flags. `Test_Layout` fills a road grid, pavement,
+building blocks, and a river from the city-1 child of the given seed.
+That layout is a stand-in until the city-block generator.
+
+`web/index.html` draws the exported seeds. One colour per terrain,
+height as shading, plus zoom and tile hover. JavaScript does not
+decide terrain or flags.
 
 Shells only, for later items: `Types`, `Assets`,
-`Assets.Placeholder`, `Data.Virtual_FS`, `World`, `World.Gen`, `Map`,
+`Assets.Placeholder`, `Data.Virtual_FS`, `World`, `World.Gen`,
 `Map.Gen`, `Path`, `Peds`, `Actions`, `Behaviour`, `Weapons`, `Shots`,
 `Vehicles`, `Mission`, `Mission.Gen`, `Agents`, `Research`, `Session`,
 `Save`, `API`. There is no Syndicate asset package.

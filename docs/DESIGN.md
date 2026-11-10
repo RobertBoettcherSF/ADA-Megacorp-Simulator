@@ -2,6 +2,14 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.3.0, item 3
+
+`Megacorp.Map` holds one city. The size comes from `Megacorp.Parameters` (default 128×128, each edge at most 1024). A tile has a terrain (`open`, `road`, `pavement`, `building`, `water`), a height 0..15, and stored walkable and drivable flags. Accessors are bounds-checked. Four- and eight-neighbour steps are there for pathfinding later (X east, Y south, origin 1).
+
+`Test_Layout` is not the city-block generator. It is a seeded stand-in: open ground, a wandering river, a road grid (roads replace water, so the crossing reads as a bridge), pavement beside roads, and building blocks whose height comes from the city-1 child of the world seed. The same seed rebuilds the same map. The headless executable prints a northwest sample and a window on the river for seed 42.
+
+The browser page does not run Ada. GNAT-LLVM/AdaWebPack is not set up on this machine, so the executable writes JSON (`--export DIR`) and `web/` only draws it. `./build.sh` regenerates `web/data/`. The page is [web/index.html](../web/index.html), and once this is on `master` it is at `https://raw.githack.com/RobertBoettcherSF/ADA-Megacorp-Simulator/master/web/index.html`.
+
 ### 2026-11-10 — version 0.2.0, item 2
 
 `Megacorp.RNG` is implemented. The generator is **xoshiro256\*\*** (Blackman and Vigna, 2018, public domain). A 64-bit seed is expanded with **SplitMix64** (Vigna, 2015, the fixed-increment form of Java 8's SplittableRandom). Both are unsigned 64-bit integer arithmetic only: no `Ada.Numerics` generators and no floating point in the state, so the same seed yields the same stream on native GNAT and, later, on WebAssembly.
@@ -26,7 +34,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1 and 2 (version 0.2.0) are implemented under `megacorp/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–3 (version 0.3.0) are implemented under `megacorp/`. The browser check page is `web/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -383,7 +391,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 
 1. **Project skeleton.** GPR, `Megacorp.*` package shells, GPL headers, `Host` (log, clock), generator parameters and the play-mode re-roll rule, assertions (`-gnata`, `Pre` / `Post`, `Type_Invariant`), and a small smoke test. Depends on: nothing. Try: `gprbuild` and the smoke test on GNAT 12.3; the executable prints version 0.1.0 and the parameters. Size: small.
 2. **Deterministic RNG with child streams.** Done in 0.2.0. xoshiro256\*\* seeded by SplitMix64; a child stream is a pure mix of the parent seed and a domain key (region, city, block, mission). Depends on: 1. Try: the smoke test checks the reference vectors, repeats a seed, and re-derives one region without moving another. Size: small.
-3. **Core types and an in-memory map grid.** Tiles, flags (walk/solid/shoot), entity IDs. Depends on: 1. Try: build a 8×8 room in a test and query walkability. Size: small (FreeSynd `map.cpp`/`map.h` ~465 lines, plus a cleaner model).
+3. **Core types and an in-memory map grid.** Done in 0.3.0. Terrain, height, walkable and drivable flags, bounds-checked access, and 4- and 8-neighbour lookup. The seeded test layout stands in until the city-block generator. Depends on: 1. Try: the smoke test, `bin/megacorp` for a text sample, and the browser page for seeds 1, 42, and 100. Size: small (FreeSynd `map.cpp`/`map.h` ~465 lines, plus a cleaner model).
 4. **Virtual FS and asset interface.** Named blobs; own placeholder tileset (a handful of floor, wall, road, door, ped sprites). Depends on: 1. Try: tests load placeholders and never look for Syndicate files. Size: small.
 
 ### Phase B — Headless simulation
