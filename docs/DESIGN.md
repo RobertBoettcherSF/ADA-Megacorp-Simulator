@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.7.0, item 7
+
+`Megacorp.Actions` is a fixed-capacity queue on each ped. The actions are `Walk_To` a tile, `Wait` a number of ticks, `Turn_To` one of eight directions, `Follow` another ped, and `Pick_Up` an item that sits on a tile. Each tick runs the front action. When it is done, the next action starts on the following tick. When it fails, the rest of the queue is cleared and the ped stands. `Walk_To` and `Follow` use `Megacorp.Peds`, so peds still block each other and the higher id can repath. An order either replaces the queue or appends to it, and takes effect on the next tick. The capacity is 8, checked by a precondition.
+
+`bin/megacorp --export` adds a scripted mission to seeds 1, 42, and 100. One ped walks, waits, turns, follows a second ped along that ped's own walk, then picks up a case. Each tick of the trace stores the current action and the remaining queue. The page shows that beside the tick counter and draws the case until the pickup. It does not run the queue.
+
 ### 2026-11-10 — version 0.6.1
 
 The browser page sets `crossOrigin = "anonymous"` before drawing the atlas, and if `getImageData` throws (WebKit on raw.githack.com reports `SecurityError: The operation is insecure.`), hover uses the tile diamond instead of the atlas alpha. That read no longer skips loading the map.
@@ -58,7 +64,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–6 are implemented under `megacorp/`. The browser check page is `web/` at version 0.6.1.  
+**Status:** agreed design, updated 10 November 2026. Items 1–7 (version 0.7.0) are implemented under `megacorp/`. The browser check page is `web/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -422,7 +428,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 
 5. **Walkability and pathfinding** on the in-memory map. Done in 0.5.0 for the grid, with separate walk and drive rules, 8-way steps that do not cut blocked corners, and a node budget. Depends on: 3, 2. Try: the smoke test, and the browser page's prepared paths for seeds 1, 42, and 100. Size: large (`pedpathfinding.cpp` 2,755 lines — expect a careful rewrite, not a dump). Vertical movement inside a single tile column is still later work; height is stored, and this search stays on the 2D grid.
 6. **Peds and movement.** Done in 0.6.0 for one ped on a path: integer sub-tile steps, 8-way facing, speed, and the states standing, walking, and arrived. A fixed tick advances the route. Peds block each other; after a short wait the higher id repaths around occupied tiles, and the lower id keeps its route. Depends on: 5. Try: the smoke test (arrival tick, a two-ped meeting, identical traces) and the browser page's play, pause, and step controls. Size: medium (`ped.cpp` is 3,184 lines overall; this item is the movement slice).
-7. **Action queue.** Walk, wait, pickup, drop, enter/leave vehicle (vehicle can be stubbed). Depends on: 6. Try: scripted action list reaches a tile and picks up an item. Size: medium (`ia/action` + `pedactions` ~2,000+ lines).
+7. **Action queue.** Done in 0.7.0. A ped has a fixed-capacity queue of walk, wait, turn, follow, and pick-up. One action runs per tick. Failure clears the queue and the ped stands. Orders replace the queue or append, and take effect on the next tick. Depends on: 6. Try: the smoke test, and the browser page's scripted mission for seeds 1, 42, and 100. Size: medium (`ia/action` + `pedactions` ~2,000+ lines). Vehicles and shooting stay later.
 8. **Weapons, shots, damage, death.** Own data-driven weapon table (not Syndicate data; FreeSynd `weapons.dat` is only a reference for ideas). Seeded spread. Depends on: 6, 2. Try: two peds, one shot, predictable health with a fixed seed. Size: medium (`weapon`/`shot` ~3,480 lines together in the reference tree).
 9. **Vehicles.** Drive on roads, enter/exit, collisions of the same kind as the reference. Depends on: 7. Try: ped enters a car and moves. Size: medium (`vehicle` 878 + train in the reference tree).
 10. **Behaviour components.** Civilian panic, police wait-and-warn, persuader/persuaded. Depends on: 7, 8. Try: armed ped in sight of police produces a warning then fire after a documented delay (the reference uses 5 seconds; our delay is chosen when this item is written). Size: medium (`ia/behaviour` 412+ headers, plus ped hooks).

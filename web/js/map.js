@@ -107,6 +107,7 @@ function drawFlat(ctx) {
   document.getElementById("zoom-label").textContent = `${tilePx} px`;
   drawPath(ctx);
   drawPeds(ctx);
+  drawItem(ctx);
 }
 
 function anchor(x, y, scale) {
@@ -164,6 +165,7 @@ function drawIso(ctx) {
   document.getElementById("zoom-label").textContent = `${scale}×`;
   drawPath(ctx);
   drawPeds(ctx);
+  drawItem(ctx);
 }
 
 function currentPath() {
@@ -294,6 +296,28 @@ function showTick() {
   if (node) {
     node.textContent = String(tick);
   }
+  const panel = document.getElementById("queue");
+  if (!panel) {
+    return;
+  }
+  const motion = currentMotion();
+  const frames = motion && motion.peds && motion.peds[0]
+    && motion.peds[0].frames;
+  if (!frames || frames.length === 0 || frames[0].action === undefined) {
+    panel.textContent = "No action queue on this trace.";
+    return;
+  }
+  panel.textContent = motion.peds.map((ped) => {
+    const frame = frameAt(ped, tick);
+    if (!frame) {
+      return "";
+    }
+    const action = frame.action || "(none)";
+    const rest = frame.queue && frame.queue.length
+      ? frame.queue.join(", ")
+      : "(none)";
+    return `Ped ${ped.id}: ${action} — remaining: ${rest}`;
+  }).filter(Boolean).join("   ");
 }
 
 function stopPlayback() {
@@ -310,8 +334,10 @@ function refreshStatus() {
     return;
   }
   if (currentMotion()) {
-    status.textContent =
-      "Paths and ped motion are precomputed by Ada, not run in the browser.";
+    const queued = currentMotion().item;
+    status.textContent = queued
+      ? "Paths, ped motion, and action queues are precomputed by Ada, not run in the browser."
+      : "Paths and ped motion are precomputed by Ada, not run in the browser.";
     return;
   }
   status.textContent =
@@ -371,6 +397,32 @@ function drawPeds(ctx) {
     );
     ctx.stroke();
   });
+  ctx.restore();
+}
+
+function drawItem(ctx) {
+  const motion = currentMotion();
+  if (!motion || !motion.item) {
+    return;
+  }
+  const frame = frameAt(motion.peds[0], tick);
+  if (!frame || frame.item_present === false) {
+    return;
+  }
+  const at = markerPoint(motion.item.x, motion.item.y);
+  const size = view === "iso" ? 7 * isoScale : Math.max(5, tilePx * 0.55);
+  ctx.save();
+  ctx.fillStyle = "#f2c14e";
+  ctx.strokeStyle = "#1b140c";
+  ctx.lineWidth = Math.max(1, size / 6);
+  ctx.beginPath();
+  ctx.moveTo(at.x, at.y - size);
+  ctx.lineTo(at.x + size, at.y);
+  ctx.lineTo(at.x, at.y + size);
+  ctx.lineTo(at.x - size, at.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 

@@ -65,6 +65,44 @@ package Megacorp.Peds is
    function State_Of (P : Ped) return State_Kind;
    function Speed_Of (P : Ped) return Positive;
 
+   --  A ped standing on one tile, with no route yet.
+   function Place
+     (Who : Ped_Id;
+      At_Point : Map.Point;
+      M : Map.City;
+      Speed : Positive := Default_Speed) return Ped
+     with Pre =>
+       Map.In_Bounds (M, At_Point.X, At_Point.Y)
+       and then Map.Tile_At (M, At_Point.X, At_Point.Y).Walkable
+       and then Speed <= Steps_Per_Tile,
+       Post =>
+         Ident (Place'Result) = Who
+         and then Tile_X (Place'Result) = At_Point.X
+         and then Tile_Y (Place'Result) = At_Point.Y
+         and then State_Of (Place'Result) = Standing
+         and then Along (Place'Result) = 0;
+
+   procedure Set_Facing (P : in out Ped; Dir : Map.Eight_Way);
+
+   --  Stop on the current tile. Drops a half-finished crossing.
+   procedure Halt (P : in out Ped)
+     with Post =>
+       State_Of (P) = Standing and then Along (P) = 0;
+
+   --  Replace the route with a walk to Goal. Accepted is false when
+   --  no walk path exists; the ped is left where it stands.
+   procedure Command_Walk
+     (Group : in out Crowd;
+      Index : Positive;
+      Goal : Map.Point;
+      M : Map.City;
+      Accepted : out Boolean)
+     with Pre =>
+       Index in Group'Range
+       and then Distinct_Ids (Group)
+       and then Map.In_Bounds (M, Goal.X, Goal.Y)
+       and then Map.Tile_At (M, Goal.X, Goal.Y).Walkable;
+
    --  Ticks needed to finish one tile at this speed.
    function Ticks_To_Cross (Speed : Positive) return Positive
      with Pre => Speed <= Steps_Per_Tile,
