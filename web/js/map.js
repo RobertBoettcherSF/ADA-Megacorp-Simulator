@@ -20,6 +20,30 @@ let view = "iso";
 let tilePx = 6;
 let isoScale = 1;
 let selectedPath = 0;
+let tick = 0;
+let timer = null;
+
+const STEP = {
+  north: [0, -1],
+  east: [1, 0],
+  south: [0, 1],
+  west: [-1, 0],
+  north_east: [1, -1],
+  south_east: [1, 1],
+  south_west: [-1, 1],
+  north_west: [-1, -1]
+};
+
+const ANGLE = {
+  east: 0,
+  south_east: Math.PI / 4,
+  south: Math.PI / 2,
+  south_west: (3 * Math.PI) / 4,
+  west: Math.PI,
+  north_west: (-3 * Math.PI) / 4,
+  north: -Math.PI / 2,
+  north_east: -Math.PI / 4
+};
 
 function shade(code, level) {
   const base = COLOUR[code] || [255, 0, 200];
@@ -82,6 +106,7 @@ function drawFlat(ctx) {
   }
   document.getElementById("zoom-label").textContent = `${tilePx} px`;
   drawPath(ctx);
+  drawPeds(ctx);
 }
 
 function anchor(x, y, scale) {
@@ -138,6 +163,7 @@ function drawIso(ctx) {
   }
   document.getElementById("zoom-label").textContent = `${scale}×`;
   drawPath(ctx);
+  drawPeds(ctx);
 }
 
 function currentPath() {
@@ -149,9 +175,11 @@ function currentPath() {
 
 function fillPaths(data) {
   const select = document.getElementById("path");
-  const status = document.getElementById("path-status");
   select.replaceChildren();
   selectedPath = 0;
+  tick = 0;
+  stopPlayback();
+  showTick();
   (data.paths || []).forEach((path, index) => {
     const option = document.createElement("option");
     option.value = String(index);
@@ -159,11 +187,10 @@ function fillPaths(data) {
     select.append(option);
   });
   if (!data.paths || data.paths.length === 0) {
-    status.textContent = "Paths are precomputed by Ada.";
+    refreshStatus();
     return;
   }
-  status.textContent =
-    "Paths are precomputed by Ada, not searched in the browser.";
+  refreshStatus();
 }
 
 function flatCenter(x, y) {
@@ -229,6 +256,121 @@ function drawPath(ctx) {
   ctx.beginPath();
   ctx.arc(goal.x, goal.y, radius, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function currentMotion() {
+  const path = currentPath();
+  if (!path || !mapData || !mapData.motion) {
+    return null;
+  }
+  return mapData.motion.find((item) => item.label === path.label) || null;
+}
+
+function frameAt(ped, at) {
+  if (!ped.frames || ped.frames.length === 0) {
+    return null;
+  }
+  const last = ped.frames.length - 1;
+  return ped.frames[Math.max(0, Math.min(at, last))];
+}
+
+function maxTick() {
+  const motion = currentMotion();
+  if (!motion) {
+    return 0;
+  }
+  let max = 0;
+  motion.peds.forEach((ped) => {
+    if (ped.frames && ped.frames.length > 0) {
+      max = Math.max(max, ped.frames[ped.frames.length - 1].t);
+    }
+  });
+  return max;
+}
+
+function showTick() {
+  const node = document.getElementById("tick");
+  if (node) {
+    node.textContent = String(tick);
+  }
+}
+
+function stopPlayback() {
+  if (timer !== null) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+function refreshStatus() {
+  const status = document.getElementById("path-status");
+  if (!mapData || !mapData.paths || mapData.paths.length === 0) {
+    status.textContent = "Paths and ped motion are precomputed by Ada.";
+    return;
+  }
+  if (currentMotion()) {
+    status.textContent =
+      "Paths and ped motion are precomputed by Ada, not run in the browser.";
+    return;
+  }
+  status.textContent =
+    "Paths are precomputed by Ada. This query has no ped trace.";
+}
+
+function pedPoint(frame, steps) {
+  const delta = STEP[frame.facing] || [0, 0];
+  const fraction = steps > 0 ? frame.along / steps : 0;
+  if (view === "iso") {
+    const from = isoCenter(frame.x, frame.y);
+    const nx = frame.x + delta[0];
+    const ny = frame.y + delta[1];
+    if (fraction === 0
+        || nx < 1 || ny < 1
+        || nx > mapData.width || ny > mapData.height) {
+      return from;
+    }
+    const to = isoCenter(nx, ny);
+    return {
+      x: from.x + (to.x - from.x) * fraction,
+      y: from.y + (to.y - from.y) * fraction
+    };
+  }
+  return {
+    x: (frame.x + delta[0] * fraction - 0.5) * tilePx,
+    y: (frame.y + delta[1] * fraction - 0.5) * tilePx
+  };
+}
+
+function drawPeds(ctx) {
+  const motion = currentMotion();
+  if (!motion) {
+    return;
+  }
+  const steps = motion.steps_per_tile;
+  ctx.save();
+  motion.peds.forEach((ped) => {
+    const frame = frameAt(ped, tick);
+    if (!frame) {
+      return;
+    }
+    const at = pedPoint(frame, steps);
+    const radius = view === "iso" ? 5 * isoScale : Math.max(4, tilePx * 0.45);
+    const angle = ANGLE[frame.facing] ?? 0;
+    ctx.fillStyle = ped.id === 1 ? "#ffe14a" : "#7fd0ff";
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#1b140c";
+    ctx.lineWidth = Math.max(2, radius * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(at.x, at.y);
+    ctx.lineTo(
+      at.x + Math.cos(angle) * radius * 1.7,
+      at.y + Math.sin(angle) * radius * 1.7
+    );
+    ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -354,7 +496,8 @@ async function loadFile(file) {
   }
   mapData = await response.json();
   document.getElementById("version").textContent = mapData.version;
-  document.getElementById("seed-label").textContent = String(mapData.seed);
+  document.getElementById("seed-label").textContent =
+    mapData.label || String(mapData.seed);
   paintLegend(mapData);
   fillPaths(mapData);
   draw();
@@ -382,7 +525,7 @@ async function main() {
   index.maps.forEach((entry, i) => {
     const option = document.createElement("option");
     option.value = entry.file;
-    option.textContent = String(entry.seed);
+    option.textContent = entry.label || String(entry.seed);
     if (entry.seed === 42) {
       chosen = i;
     }
@@ -395,7 +538,37 @@ async function main() {
   });
   document.getElementById("path").addEventListener("change", (event) => {
     selectedPath = Number(event.target.value);
+    tick = 0;
+    stopPlayback();
+    showTick();
+    refreshStatus();
     draw();
+  });
+  document.getElementById("play").addEventListener("click", () => {
+    stopPlayback();
+    if (tick >= maxTick()) {
+      return;
+    }
+    timer = setInterval(() => {
+      if (tick >= maxTick()) {
+        stopPlayback();
+        return;
+      }
+      tick += 1;
+      showTick();
+      draw();
+    }, 80);
+  });
+  document.getElementById("pause").addEventListener("click", () => {
+    stopPlayback();
+  });
+  document.getElementById("step").addEventListener("click", () => {
+    stopPlayback();
+    if (tick < maxTick()) {
+      tick += 1;
+      showTick();
+      draw();
+    }
   });
   document.getElementById("view").addEventListener("click", () => {
     view = view === "iso" ? "flat" : "iso";
@@ -451,6 +624,10 @@ async function main() {
     }
     selectedPath = nearestPrepared(tile.x, tile.y);
     document.getElementById("path").value = String(selectedPath);
+    tick = 0;
+    stopPlayback();
+    showTick();
+    refreshStatus();
     draw();
   });
   await loadFile(index.maps[select.selectedIndex].file);

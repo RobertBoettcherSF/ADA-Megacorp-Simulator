@@ -45,9 +45,17 @@ package body Megacorp.Path is
    function Is_Diagonal (Dir : Map.Eight_Way) return Boolean;
    function Passable
      (M : Map.City; X, Y : Integer; How : Mode) return Boolean;
+   function Is_Blocked
+     (Blocked : Block_Lists.Vector;
+      From : Map.Point;
+      X, Y : Integer) return Boolean;
    function Sides_Open
-     (M : Map.City; X, Y : Positive; Dir : Map.Eight_Way; How : Mode)
-     return Boolean;
+     (M : Map.City;
+      X, Y : Positive;
+      Dir : Map.Eight_Way;
+      How : Mode;
+      From : Map.Point;
+      Blocked : Block_Lists.Vector) return Boolean;
    function Better
      (Nodes : Node_Array;
       Width, Goal_X, Goal_Y : Positive;
@@ -135,9 +143,33 @@ package body Megacorp.Path is
       end case;
    end Passable;
 
+   function Is_Blocked
+     (Blocked : Block_Lists.Vector;
+      From : Map.Point;
+      X, Y : Integer) return Boolean
+   is
+   begin
+      if Blocked.Is_Empty then
+         return False;
+      end if;
+      if X = From.X and then Y = From.Y then
+         return False;
+      end if;
+      for I in Blocked.First_Index .. Blocked.Last_Index loop
+         if Blocked (I).X = X and then Blocked (I).Y = Y then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Is_Blocked;
+
    function Sides_Open
-     (M : Map.City; X, Y : Positive; Dir : Map.Eight_Way; How : Mode)
-     return Boolean
+     (M : Map.City;
+      X, Y : Positive;
+      Dir : Map.Eight_Way;
+      How : Mode;
+      From : Map.Point;
+      Blocked : Block_Lists.Vector) return Boolean
    is
    begin
       case Dir is
@@ -145,16 +177,24 @@ package body Megacorp.Path is
             return True;
          when Map.North_East =>
             return Passable (M, X, Y - 1, How)
-              and then Passable (M, X + 1, Y, How);
+              and then not Is_Blocked (Blocked, From, X, Y - 1)
+              and then Passable (M, X + 1, Y, How)
+              and then not Is_Blocked (Blocked, From, X + 1, Y);
          when Map.South_East =>
             return Passable (M, X, Y + 1, How)
-              and then Passable (M, X + 1, Y, How);
+              and then not Is_Blocked (Blocked, From, X, Y + 1)
+              and then Passable (M, X + 1, Y, How)
+              and then not Is_Blocked (Blocked, From, X + 1, Y);
          when Map.South_West =>
             return Passable (M, X, Y + 1, How)
-              and then Passable (M, X - 1, Y, How);
+              and then not Is_Blocked (Blocked, From, X, Y + 1)
+              and then Passable (M, X - 1, Y, How)
+              and then not Is_Blocked (Blocked, From, X - 1, Y);
          when Map.North_West =>
             return Passable (M, X, Y - 1, How)
-              and then Passable (M, X - 1, Y, How);
+              and then not Is_Blocked (Blocked, From, X, Y - 1)
+              and then Passable (M, X - 1, Y, How)
+              and then not Is_Blocked (Blocked, From, X - 1, Y);
       end case;
    end Sides_Open;
 
@@ -339,7 +379,8 @@ package body Megacorp.Path is
      (M : Map.City;
       From, To : Map.Point;
       How : Mode;
-      Budget : Positive := Default_Budget) return Result
+      Budget : Positive;
+      Blocked : Block_Lists.Vector) return Result
    is
       Width  : constant Positive := M.Width;
       Height : constant Positive := M.Height;
@@ -361,6 +402,7 @@ package body Megacorp.Path is
       end if;
       if not Passable (M, From.X, From.Y, How)
         or else not Passable (M, To.X, To.Y, How)
+        or else Is_Blocked (Blocked, From, To.X, To.Y)
       then
          Free_Nodes (Nodes);
          Free_Heap (Heap);
@@ -410,7 +452,10 @@ package body Megacorp.Path is
                      begin
                         if not Nodes (Nid).Closed
                           and then Passable (M, Next.X, Next.Y, How)
-                          and then Sides_Open (M, CX, CY, Dir, How)
+                          and then not Is_Blocked
+                            (Blocked, From, Next.X, Next.Y)
+                          and then Sides_Open
+                            (M, CX, CY, Dir, How, From, Blocked)
                         then
                            Tentative :=
                              Nodes (Current).G + Step_Cost (Dir);
