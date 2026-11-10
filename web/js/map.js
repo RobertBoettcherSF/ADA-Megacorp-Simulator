@@ -107,6 +107,7 @@ function drawFlat(ctx) {
   document.getElementById("zoom-label").textContent = `${tilePx} px`;
   drawPath(ctx);
   drawPeds(ctx);
+  drawShots(ctx);
   drawItem(ctx);
 }
 
@@ -165,6 +166,7 @@ function drawIso(ctx) {
   document.getElementById("zoom-label").textContent = `${scale}×`;
   drawPath(ctx);
   drawPeds(ctx);
+  drawShots(ctx);
   drawItem(ctx);
 }
 
@@ -316,7 +318,10 @@ function showTick() {
     const rest = frame.queue && frame.queue.length
       ? frame.queue.join(", ")
       : "(none)";
-    return `Ped ${ped.id}: ${action} — remaining: ${rest}`;
+    const hp = typeof frame.health === "number"
+      ? ` hp ${frame.health}${frame.alive === false ? " down" : ""} ammo ${frame.ammo}`
+      : "";
+    return `Ped ${ped.id}: ${action}${hp} — remaining: ${rest}`;
   }).filter(Boolean).join("   ");
 }
 
@@ -334,10 +339,16 @@ function refreshStatus() {
     return;
   }
   if (currentMotion()) {
-    const queued = currentMotion().item;
-    status.textContent = queued
-      ? "Paths, ped motion, and action queues are precomputed by Ada, not run in the browser."
-      : "Paths and ped motion are precomputed by Ada, not run in the browser.";
+    if (currentMotion().item) {
+      status.textContent =
+        "Paths, ped motion, and action queues are precomputed by Ada, not run in the browser.";
+    } else if (currentMotion().label === "Firefight") {
+      status.textContent =
+        "Paths, ped motion, and shots are precomputed by Ada, not run in the browser.";
+    } else {
+      status.textContent =
+        "Paths and ped motion are precomputed by Ada, not run in the browser.";
+    }
     return;
   }
   status.textContent =
@@ -395,6 +406,40 @@ function drawPeds(ctx) {
       at.x + Math.cos(angle) * radius * 1.7,
       at.y + Math.sin(angle) * radius * 1.7
     );
+    ctx.stroke();
+    if (typeof frame.health === "number") {
+      const bar = radius * 2.4;
+      const thick = Math.max(3, radius * 0.35);
+      const left = at.x - bar / 2;
+      const top = at.y - radius * 2.4;
+      ctx.fillStyle = "#241c18";
+      ctx.fillRect(left, top, bar, thick);
+      ctx.fillStyle = frame.alive === false ? "#8a847c" : "#5dce6a";
+      ctx.fillRect(left, top, bar * Math.max(0, frame.health) / 100, thick);
+    }
+  });
+  ctx.restore();
+}
+
+function drawShots(ctx) {
+  const motion = currentMotion();
+  if (!motion) {
+    return;
+  }
+  ctx.save();
+  ctx.lineWidth = view === "iso" ? 2 * isoScale : 2;
+  motion.peds.forEach((ped) => {
+    const frame = frameAt(ped, tick);
+    if (!frame || !frame.shot) {
+      return;
+    }
+    const from = markerPoint(frame.x, frame.y);
+    const to = markerPoint(frame.shot.x, frame.shot.y);
+    ctx.strokeStyle = frame.shot.hit ? "#ff5a5a" : "#9aa4b2";
+    ctx.setLineDash(frame.shot.hit ? [] : [6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
     ctx.stroke();
   });
   ctx.restore();

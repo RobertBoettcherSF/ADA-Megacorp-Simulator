@@ -1,11 +1,9 @@
-# Megacorp Simulator 0.7.0
+# Megacorp Simulator 0.8.0
 
-Headless Ada core for Megacorp Simulator. Version 0.7.0 adds an
-action queue on each ped (design items 1–7). Version 0.6.1 keeps the
-browser page working when WebKit refuses to read the atlas pixels.
-Later packages are
-still specs. FreeSynd stays elsewhere in the repository as a logic
-reference and is not built here.
+Headless Ada core for Megacorp Simulator. Version 0.8.0 adds
+weapons, line of sight, and a shoot action (design items 1–8).
+Version 0.6.1 keeps the browser page working when WebKit refuses
+to read the atlas pixels. Later packages are still specs.
 
 A browser page draws maps the Ada program has already exported. It
 does not run the simulation. After this branch is on `master`:
@@ -79,7 +77,7 @@ Build products (`obj/`, `lib/`, `bin/`) are not committed. The
 exported JSON under `web/data/` is committed so the page can be opened
 without a local build.
 
-## What 0.7.0 contains
+## What 0.8.0 contains
 
 Real code: version, generator parameters (defaults 4 corporations,
 40 regions, 128 by 128 city maps), the play-mode re-roll rule, a
@@ -119,6 +117,13 @@ queue and the ped stands. An order replaces the queue or appends,
 and takes effect on the next tick. `Walk_To` uses the ped movement,
 including blocking and repathing. A case is an item on a tile.
 
+`Megacorp.Weapons` lists a pistol, an SMG, and a rifle. Each has a
+reach, a damage, a number of ticks between shots, and a magazine.
+A ped has 100 health. `Megacorp.Shots` rolls a hit on a child of the
+fight seed and blocks the shot on a building tile. `Shoot_At` aims,
+then fires until the target is down, out of reach, blocked, or out
+of rounds. A downed ped stops and that queue is cleared.
+
 `web/index.html` draws the exported seeds. Flat view is one colour per
 terrain. Isometric view uses the atlas and the exported tile id, back
 to front, with building stacks. Each seed includes Ada-computed walk
@@ -128,18 +133,19 @@ Play, pause, and step replay the trace and draw a marker with its
 facing. Each seed also has a scripted mission: one ped walks, waits,
 turns, follows a second ped, and picks up a case. The page shows the
 current action and the remaining queue beside the tick counter, and
-draws the case until it is picked up. The page does not simulate.
+draws the case until it is picked up. Each seed also has a
+firefight: shot lines, health bars, and ammo from the Ada trace.
+The page does not simulate.
 Zoom and hover work in both views. If the browser will not read the
 atlas pixels, hover uses the tile diamond and the map still loads.
 
 Shells only, for later items: `Types`, `Assets`, `World`, `World.Gen`,
-`Map.Gen`, `Behaviour`, `Weapons`, `Shots`, `Vehicles`,
+`Map.Gen`, `Behaviour`, `Vehicles`,
 `Mission`, `Mission.Gen`, `Agents`, `Research`, `Session`, `Save`,
 `API`. There is no Syndicate asset package.
 
 ## Licence
 
-GPL-2-or-later. See `COPYING`. The setting and the art are original.
-The choice between GPL-2-only and GPL-2-or-later is still open in the
-design; these headers follow FreeSynd's "or later" file headers until
-that is closed.
+MIT. Copyright (c) 2026 Robert Boettcher. See `../LICENSE`. The
+setting and the art are original. Headers in this directory say
+`SPDX-License-Identifier: MIT`.

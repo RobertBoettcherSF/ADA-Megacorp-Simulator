@@ -2,6 +2,14 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.8.0, item 8
+
+Our own code is MIT, copyright Robert Boettcher. The imported FreeSynd trees and `megacorp/COPYING` are gone from this revision. Git history is unchanged.
+
+`Megacorp.Weapons` is a small table: pistol, SMG, and rifle, each with reach, damage, ticks between shots, and a magazine. A ped has health (100) and an ammo count. `Megacorp.Shots` rolls a hit on a child RNG stream and walks a Bresenham line; a building tile between the ends blocks the shot. `Shoot_At` aims for one tick, then fires at the weapon's rate until the target is down, out of reach, blocked, or out of ammo. A downed ped stops and that ped's queue is cleared.
+
+`bin/megacorp --export` adds a firefight to seeds 1, 42, and 100. The page draws the shot line, a health bar, and the ammo count from that trace. It does not roll dice.
+
 ### 2026-11-10 — version 0.7.0, item 7
 
 `Megacorp.Actions` is a fixed-capacity queue on each ped. The actions are `Walk_To` a tile, `Wait` a number of ticks, `Turn_To` one of eight directions, `Follow` another ped, and `Pick_Up` an item that sits on a tile. Each tick runs the front action. When it is done, the next action starts on the following tick. When it fails, the rest of the queue is cleared and the ped stands. `Walk_To` and `Follow` use `Megacorp.Peds`, so peds still block each other and the higher id can repath. An order either replaces the queue or appends to it, and takes effect on the next tick. The capacity is 8, checked by a precondition.
@@ -54,6 +62,30 @@ Reference vectors, checked by the smoke test:
 
 Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), [splitmix64.c](https://prng.di.unimi.it/splitmix64.c).
 
+## Autonomous decisions (night of 2026-11-10)
+
+Robert authorised items 8 through 28 to be built overnight, one branch and one minor version each, and asked for this log so the choices can be reviewed in the morning. Standing calls for the whole night: skip item 12 (the C++ comparison harness) and record that skip when its turn comes; if GNAT-LLVM or AdaWebPack cannot be built for item 20, use an Ada WebSocket server and record that; item 27 uses generated placeholder sounds.
+
+### Item 8 — licence, weapons, and shots
+
+**Licence.** MIT for `megacorp/`, `web/`, `tools/`, and `docs/`. Copyright line: Robert Boettcher. File headers are `SPDX-License-Identifier: MIT`. A root `LICENSE` and a root `README.md` replace the old layout. `megacorp/COPYING` is deleted.
+
+**Removed trees.** `freesynd/`, `freesynd-experimental/`, `libsyndicate-0.13/`, `libs/`, `scripts/`, and `www/` are deleted in this revision. There was no other top-level FreeSynd file (no root README, COPYING, or CMake file). Git history is not rewritten, so older commits still contain those files.
+
+**Copy check.** Before the deletion, a search of `megacorp/`, `web/`, `tools/`, and `docs/` found no code, data table, or numeric constant copied from those trees. The only mentions were this design document and comments that said we do not ship original game data. The RNG test vectors are the published xoshiro256** and SplitMix64 sequences. Orthogonal cost 10 and diagonal cost 14 are the usual integer octile pair. Nothing was rewritten because nothing had been copied. The sentences that told us to keep FreeSynd in the tree as a logic reference now say it was a design inspiration only.
+
+**Weapons.** Pistol: reach 8, damage 25, 4 ticks between shots, 12 rounds. SMG: 6, 10, 2, 30. Rifle: 14, 40, 6, 8. These numbers are new. The alternative was to mirror some other game's weapon table; that was rejected.
+
+**Health and a downed ped.** Health starts at 100. At 0 the ped is down, movement stops, and that ped's queue is cleared.
+
+**Range and line of sight.** Reach is Chebyshev distance, so a diagonal step counts as one. The line is Bresenham. A building tile strictly between the two ends blocks the shot. Roads, pavement, open ground, and water do not. The alternative was to block every non-walkable tile, which would also stop shots across water.
+
+**Hit roll.** Chance is 100 at distance 0 or 1 and 40 at the weapon's reach, linear in between, integer division. The roll is `RNG.Chance` on a fresh child of the fight seed (`Mission` domain, key = ped id × 1000 + shot number). A hit deals the weapon's damage exactly. A second damage roll was the alternative; it was left out so the smoke test can check an exact total.
+
+**Shoot_At.** One tick of aiming, then a shot every `Rate` ticks. Out of reach, a blocked line, or an empty magazine fails the action before spending a round when the shot cannot be made, and fails it after the last round when the magazine runs out with the target still up. Downing the target completes the action. Failure clears the rest of that shooter's queue, same as the other actions.
+
+**Page.** Seeds 1, 42, and 100 gain a Firefight trace. The page draws a solid red line for a hit and a dashed line for a miss, a health bar, and ammo next to the tick. The older walk, path, meeting, and scripted-mission views stay.
+
 ### 2026-11-10 — Robert's decisions (override anything later in this document that conflicts)
 
 1. **Language and route.** All logic, and as much of the rest as possible, in plain Ada. JavaScript is only a thin browser layer (canvas, audio, input, storage). The Ada core is built natively first with GNAT 12.3 and gprbuild, and later compiled to WebAssembly (GNAT-LLVM / AdaWebPack). A WebSocket server is the fallback.
@@ -64,17 +96,15 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–7 (version 0.7.0) are implemented under `megacorp/`. The browser check page is `web/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–8 (version 0.8.0) are implemented under `megacorp/`. The browser check page is `web/`. The code we wrote is MIT.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
 **Target:** all game logic in plain Ada; a thin JavaScript browser layer; world **procedurally generated** from a seed and **persistent** across sessions. Own setting, own placeholder art, no original Syndicate data.
 
-This document is the agreed design. It covers (1) an inventory of the imported FreeSynd tree, (2) the target Ada core and browser architecture, including a seeded procedural world and its save model, (3) a numbered list of small, testable implementation items, and (4) the decisions above plus the questions still open.
+This document is the agreed design. It covers (1) a historical inventory of a FreeSynd tree that used to be imported, (2) the target Ada core and browser architecture, including a seeded procedural world and its save model, (3) a numbered list of small, testable implementation items, and (4) the decisions above plus the questions still open.
 
-FreeSynd stays in this repository as a logic reference only. Do not modify or delete the FreeSynd folders.
-
-Line counts below are physical lines (wc-style: code + comments + blanks) measured on this checkout. The `freesynd/` folder is a Subversion import and contains `trunk`, `tags`, and `branches` side by side; do not add those trees together.
+That imported tree was a design inspiration only. It was removed in 0.8.0. This repository no longer contains FreeSynd code or files. Later work, if it needs a reminder of how this kind of game usually behaves, uses the general public design of that kind of game. The inventory below records what was once here; the line counts were measured before the deletion.
 
 ---
 
@@ -429,7 +459,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 5. **Walkability and pathfinding** on the in-memory map. Done in 0.5.0 for the grid, with separate walk and drive rules, 8-way steps that do not cut blocked corners, and a node budget. Depends on: 3, 2. Try: the smoke test, and the browser page's prepared paths for seeds 1, 42, and 100. Size: large (`pedpathfinding.cpp` 2,755 lines — expect a careful rewrite, not a dump). Vertical movement inside a single tile column is still later work; height is stored, and this search stays on the 2D grid.
 6. **Peds and movement.** Done in 0.6.0 for one ped on a path: integer sub-tile steps, 8-way facing, speed, and the states standing, walking, and arrived. A fixed tick advances the route. Peds block each other; after a short wait the higher id repaths around occupied tiles, and the lower id keeps its route. Depends on: 5. Try: the smoke test (arrival tick, a two-ped meeting, identical traces) and the browser page's play, pause, and step controls. Size: medium (`ped.cpp` is 3,184 lines overall; this item is the movement slice).
 7. **Action queue.** Done in 0.7.0. A ped has a fixed-capacity queue of walk, wait, turn, follow, and pick-up. One action runs per tick. Failure clears the queue and the ped stands. Orders replace the queue or append, and take effect on the next tick. Depends on: 6. Try: the smoke test, and the browser page's scripted mission for seeds 1, 42, and 100. Size: medium (`ia/action` + `pedactions` ~2,000+ lines). Vehicles and shooting stay later.
-8. **Weapons, shots, damage, death.** Own data-driven weapon table (not Syndicate data; FreeSynd `weapons.dat` is only a reference for ideas). Seeded spread. Depends on: 6, 2. Try: two peds, one shot, predictable health with a fixed seed. Size: medium (`weapon`/`shot` ~3,480 lines together in the reference tree).
+8. **Weapons, shots, damage, death.** Done in 0.8.0 for pistol, SMG, and rifle, ped health, a seeded hit/miss roll, and building line-of-sight. `Shoot_At` fires until the target is down, out of reach, blocked, or out of ammo. Depends on: 6, 2. Try: the smoke test, and the browser page's firefight for seeds 1, 42, and 100. Size: medium.
 9. **Vehicles.** Drive on roads, enter/exit, collisions of the same kind as the reference. Depends on: 7. Try: ped enters a car and moves. Size: medium (`vehicle` 878 + train in the reference tree).
 10. **Behaviour components.** Civilian panic, police wait-and-warn, persuader/persuaded. Depends on: 7, 8. Try: armed ped in sight of police produces a warning then fire after a documented delay (the reference uses 5 seconds; our delay is chosen when this item is written). Size: medium (`ia/behaviour` 412+ headers, plus ped hooks).
 11. **Mission loop.** Start, fixed ticks, objectives, success/fail, stats. Headless runner: seed, inputs, N ticks, dump state. Depends on: 7–10. Try: a fixture mission (hand-built map) completes from a recorded input file. Size: medium-large (`mission.cpp` 3,197 in the reference tree).
@@ -483,7 +513,7 @@ Still open:
 1. **Mid-mission saves.** Recommendation: skip in v1 (discard an in-progress fight). Not required by the 2026-11-10 decisions.
 2. **Scope cuts.** Recommendation: editor (`dump` / `src/editor`), multiplayer leftovers, and intro FLI stay out of scope. Not explicitly confirmed.
 3. **Languages.** Classic EN/FR/IT/DE mission text left with the dropped classic mode. A string table for generated missions is still to be designed.
-4. **Licence tag.** GPL-2-only or GPL-2-or-later. The skeleton uses GPL-2-or-later headers until this is closed. “Own IP” in the decisions means the setting and the art, not a proprietary code licence.
+4. **Licence tag.** Closed in 0.8.0: MIT for the code and art we wrote, copyright Robert Boettcher. The imported GPL trees were removed in that same revision. “Own IP” in the earlier decisions means the setting and the art.
 
 ---
 

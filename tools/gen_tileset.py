@@ -219,8 +219,8 @@ def main():
         "or Electronic Arts, and they contain no copied game art.\n"
         "\n"
         "They are part of Megacorp Simulator and are covered by the\n"
-        "same licence as the program: GPL-2.0-or-later. See\n"
-        "megacorp/COPYING.\n",
+        "MIT licence. Copyright (c) 2026 Robert Boettcher. See\n"
+        "LICENSE at the repository root.\n",
         encoding="utf-8",
     )
     print(f"wrote {root / 'atlas.png'} and {len(tiles)} tiles")

@@ -1,23 +1,11 @@
---  Megacorp Simulator
---  Copyright (C) 2026  the Megacorp Simulator authors
---
---  This program is free software; you can redistribute it and/or
---  modify it under the terms of the GNU General Public License as
---  published by the Free Software Foundation; either version 2 of
---  the License, or (at your option) any later version.
---
---  This program is distributed in the hope that it will be useful,
---  but WITHOUT ANY WARRANTY; without even the implied warranty of
---  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
---  GNU General Public License for more details.
---
---  You should have received a copy of the GNU General Public License
---  along with this program.  If not, see
---  <https://www.gnu.org/licenses/>.
+--  SPDX-License-Identifier: MIT
+--  Copyright (c) 2026 Robert Boettcher
 
 with Ada.Directories;
 with Ada.Text_IO;
 with Megacorp.Actions;
+with Megacorp.Shots;
+with Megacorp.Weapons;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Path;
@@ -826,9 +814,34 @@ package body Megacorp.Map is
       end loop;
       Ada.Text_IO.Put (File, "],""item_present"":");
       if Shot.Item_Here then
-         Ada.Text_IO.Put (File, "true}");
+         Ada.Text_IO.Put (File, "true");
       else
-         Ada.Text_IO.Put (File, "false}");
+         Ada.Text_IO.Put (File, "false");
+      end if;
+      Ada.Text_IO.Put (File, ",""health"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.Health)));
+      Ada.Text_IO.Put (File, ",""ammo"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.Ammo)));
+      Ada.Text_IO.Put (File, ",""alive"":");
+      if Shot.Alive then
+         Ada.Text_IO.Put (File, "true");
+      else
+         Ada.Text_IO.Put (File, "false");
+      end if;
+      if Shot.Fired then
+         Ada.Text_IO.Put (File, ",""shot"":{""hit"":");
+         if Shot.Landed then
+            Ada.Text_IO.Put (File, "true");
+         else
+            Ada.Text_IO.Put (File, "false");
+         end if;
+         Ada.Text_IO.Put (File, ",""x"":");
+         Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.At_X)));
+         Ada.Text_IO.Put (File, ",""y"":");
+         Ada.Text_IO.Put (File, Trim (Integer'Image (Shot.At_Y)));
+         Ada.Text_IO.Put (File, "}}");
+      else
+         Ada.Text_IO.Put (File, ",""shot"":null}");
       end if;
       if Last_Item then
          Ada.Text_IO.New_Line (File);
@@ -893,8 +906,86 @@ package body Megacorp.Map is
       Write_Script_Ped (File, Trace, 1, False);
       Write_Script_Ped (File, Trace, 2, True);
       Ada.Text_IO.Put_Line (File, "      ]");
-      Ada.Text_IO.Put_Line (File, "    }");
+      Ada.Text_IO.Put_Line (File, "    },");
    end Write_Script;
+
+   type Duel_Points is record
+      Shooter : Point;
+      Target  : Point;
+   end record;
+
+   function Fight_Of (M : City) return Duel_Points;
+   function Firefight (M : City) return Act.Shot_Lists.Vector;
+   procedure Write_Fight (File : Ada.Text_IO.File_Type; M : City);
+
+   function Fight_Of (M : City) return Duel_Points is
+      Start : constant Point := Locate (M, Pavement, False);
+      X     : Integer;
+      Y     : Integer;
+      There : Point;
+      Dist  : Natural;
+   begin
+      for DY in -16 .. 16 loop
+         for DX in -16 .. 16 loop
+            X := Start.X + DX;
+            Y := Start.Y + DY;
+            if In_Bounds (M, X, Y)
+              and then M.Cell (X, Y).Walkable
+            then
+               There := (X => X, Y => Y);
+               Dist := Natural'Max
+                 (abs (There.X - Start.X), abs (There.Y - Start.Y));
+               if Dist >= 5 and then Dist <= 7
+                 and then not Shots.Blocked (M, Start, There)
+               then
+                  return (Shooter => Start, Target => There);
+               end if;
+            end if;
+         end loop;
+      end loop;
+      pragma Assert (False);
+      return (Shooter => Start, Target => Start);
+   end Fight_Of;
+
+   function Firefight (M : City) return Act.Shot_Lists.Vector is
+      Duel  : constant Duel_Points := Fight_Of (M);
+      Group : Act.Cast (1 .. 2);
+      Items : Act.Bag (1 .. 1);
+      Gun   : constant Weapons.Kind := Weapons.Pistol;
+   begin
+      Group (1) :=
+        Act.Recruit (1, Duel.Shooter, M, Layout_Seed (M));
+      Group (2) :=
+        Act.Recruit (2, Duel.Target, M, Layout_Seed (M));
+      Act.Arm
+        (Group, 1, Gun, Weapons.Profile (Gun).Magazine);
+      Act.Order
+        (Group, 1,
+         (1 => Act.Make_Shoot (2, Gun)),
+         Act.Replace);
+      Act.Order
+        (Group, 2, (1 => Act.Make_Wait (80)), Act.Replace);
+      Items (1) := (Ident => 1, X => 1, Y => 1, Here => False);
+      return Act.Run (M, Group, Items, 200);
+   end Firefight;
+
+   procedure Write_Fight (File : Ada.Text_IO.File_Type; M : City) is
+      Trace : constant Act.Shot_Lists.Vector := Firefight (M);
+   begin
+      pragma Assert (not Trace.Is_Empty);
+      Ada.Text_IO.Put_Line (File, "    {");
+      Ada.Text_IO.Put_Line
+        (File, "      ""label"": ""Firefight"",");
+      Ada.Text_IO.Put (File, "      ""steps_per_tile"": ");
+      Ada.Text_IO.Put
+        (File, Trim (Integer'Image (Peds.Steps_Per_Tile)));
+      Ada.Text_IO.Put_Line (File, ",");
+      Ada.Text_IO.Put_Line (File, "      ""peds"": [");
+      Write_Script_Ped (File, Trace, 1, False);
+      Write_Script_Ped (File, Trace, 2, True);
+      Ada.Text_IO.Put_Line (File, "      ]");
+      Ada.Text_IO.Put_Line (File, "    }");
+   end Write_Fight;
 
    procedure Write_Paths
      (File : Ada.Text_IO.File_Type; M : City)
@@ -918,7 +1009,10 @@ package body Megacorp.Map is
          Walk_A, River, False);
       Put_Route
         (File, M, "Scripted mission", Path.Walk,
-         Plan.Follower_At, Plan.Item_At, True);
+         Plan.Follower_At, Plan.Item_At, False);
+      Put_Route
+        (File, M, "Firefight", Path.Walk,
+         Fight_Of (M).Shooter, Fight_Of (M).Target, True);
       Ada.Text_IO.Put_Line (File, "  ]");
    end Write_Paths;
 
@@ -1047,6 +1141,7 @@ package body Megacorp.Map is
          Ada.Text_IO.Put_Line (File, "      ]");
          Ada.Text_IO.Put_Line (File, "    },");
          Write_Script (File, M);
+         Write_Fight (File, M);
          Ada.Text_IO.Put_Line (File, "  ]");
       end;
    end Write_Motion;

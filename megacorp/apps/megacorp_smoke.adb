@@ -1,19 +1,5 @@
---  Megacorp Simulator
---  Copyright (C) 2026  the Megacorp Simulator authors
---
---  This program is free software; you can redistribute it and/or
---  modify it under the terms of the GNU General Public License as
---  published by the Free Software Foundation; either version 2 of
---  the License, or (at your option) any later version.
---
---  This program is distributed in the hope that it will be useful,
---  but WITHOUT ANY WARRANTY; without even the implied warranty of
---  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
---  GNU General Public License for more details.
---
---  You should have received a copy of the GNU General Public License
---  along with this program.  If not, see
---  <https://www.gnu.org/licenses/>.
+--  SPDX-License-Identifier: MIT
+--  Copyright (c) 2026 Robert Boettcher
 
 with Ada.Assertions;
 with Ada.Command_Line;
@@ -21,6 +7,7 @@ with Ada.Text_IO;
 with Ada.Containers;
 with Ada.Strings.Fixed;
 with Megacorp.Actions;
+with Megacorp.Weapons;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Host;
@@ -53,9 +40,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.7.0"
+     (Megacorp.Version = "0.8.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.7.0");
+      "version 0.8.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -765,6 +752,133 @@ begin
       Smoke_Check.Expect
         (Saw_Follow and then At_Case and then Meet = Same,
          "follow then pick up, traces match");
+   end;
+
+   declare
+      package Map renames Megacorp.Map;
+      package Peds renames Megacorp.Peds;
+      package Act renames Megacorp.Actions;
+      package Guns renames Megacorp.Weapons;
+      use type Act.Shot_Lists.Vector;
+
+      Lane : constant Map.City := Map.Blank (3, 1);
+      Far  : constant Map.City := Map.Blank (30, 1);
+      Wall : Map.City := Map.Blank (5, 3);
+      Brick : constant Map.Tile :=
+        (Kind => Map.Building, Level => 3,
+         Walkable => False, Drivable => False);
+      Pair : Act.Cast (1 .. 2);
+      Empty : Act.Bag (1 .. 1);
+      First : Act.Shot_Lists.Vector;
+      Again : Act.Shot_Lists.Vector;
+      Target_Hp : Natural;
+      Shooter_Ammo : Natural;
+      Target_Alive : Boolean;
+      Saw_Wait : Boolean;
+   begin
+      Empty (1) := (Ident => 1, X => 1, Y => 1, Here => False);
+      for Y in 1 .. 3 loop
+         Map.Set_Tile (Wall, 3, Y, Brick);
+      end loop;
+      Pair (1) := Act.Recruit (1, (X => 1, Y => 2), Wall, 9);
+      Pair (2) := Act.Recruit (2, (X => 5, Y => 2), Wall, 9);
+      Act.Arm (Pair, 1, Guns.Pistol, Guns.Profile (Guns.Pistol).Magazine);
+      Act.Order
+        (Pair, 1, (1 => Act.Make_Shoot (2, Guns.Pistol)), Act.Replace);
+      First := Act.Run (Wall, Pair, Empty, 30);
+      Again := Act.Run (Wall, Pair, Empty, 30);
+      Target_Hp := 0;
+      Shooter_Ammo := 0;
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Ident = 2 then
+            Target_Hp := First (I).Health;
+         elsif First (I).Ident = 1 then
+            Shooter_Ammo := First (I).Ammo;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Target_Hp = Peds.Full_Health
+         and then Shooter_Ammo = Guns.Profile (Guns.Pistol).Magazine
+         and then First = Again,
+         "a wall blocks the shot");
+
+      Pair (1) := Act.Recruit (1, (X => 1, Y => 1), Far, 9);
+      Pair (2) := Act.Recruit (2, (X => 25, Y => 1), Far, 9);
+      Act.Arm (Pair, 1, Guns.Pistol, Guns.Profile (Guns.Pistol).Magazine);
+      Act.Order
+        (Pair, 1,
+         (1 => Act.Make_Shoot (2, Guns.Pistol),
+          2 => Act.Make_Wait (4)),
+         Act.Replace);
+      First := Act.Run (Far, Pair, Empty, 20);
+      Target_Hp := 0;
+      Saw_Wait := False;
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Ident = 2 then
+            Target_Hp := First (I).Health;
+         end if;
+         if First (I).Ident = 1 and then First (I).Has_Action then
+            declare
+               Text : constant String :=
+                 Act.Token_Strings.To_String (First (I).Action);
+            begin
+               if Text'Length >= 4
+                 and then Text (Text'First .. Text'First + 3) = "wait"
+               then
+                  Saw_Wait := True;
+               end if;
+            end;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Target_Hp = Peds.Full_Health and then not Saw_Wait,
+         "out of range fails and clears the queue");
+
+      Pair (1) := Act.Recruit (1, (X => 1, Y => 1), Lane, 9);
+      Pair (2) := Act.Recruit (2, (X => 2, Y => 1), Lane, 9);
+      Act.Arm (Pair, 1, Guns.Pistol, 2);
+      Act.Order
+        (Pair, 2, (1 => Act.Make_Wait (30)), Act.Replace);
+      Act.Order
+        (Pair, 1, (1 => Act.Make_Shoot (2, Guns.Pistol)), Act.Replace);
+      First := Act.Run (Lane, Pair, Empty, 40);
+      Again := Act.Run (Lane, Pair, Empty, 40);
+      Target_Hp := 0;
+      Shooter_Ammo := 99;
+      Target_Alive := False;
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Ident = 2 then
+            Target_Hp := First (I).Health;
+            Target_Alive := First (I).Alive;
+         elsif First (I).Ident = 1 then
+            Shooter_Ammo := First (I).Ammo;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Shooter_Ammo = 0
+         and then Target_Hp = Peds.Full_Health - 2 * 25
+         and then Target_Alive
+         and then First = Again,
+         "running out of ammo stops firing");
+
+      Act.Arm (Pair, 1, Guns.Pistol, Guns.Profile (Guns.Pistol).Magazine);
+      Act.Order
+        (Pair, 1, (1 => Act.Make_Shoot (2, Guns.Pistol)), Act.Replace);
+      Act.Order
+        (Pair, 2, (1 => Act.Make_Wait (40)), Act.Replace);
+      First := Act.Run (Lane, Pair, Empty, 80);
+      Again := Act.Run (Lane, Pair, Empty, 80);
+      Target_Hp := 99;
+      Target_Alive := True;
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Ident = 2 then
+            Target_Hp := First (I).Health;
+            Target_Alive := First (I).Alive;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (Target_Hp = 0 and then not Target_Alive and then First = Again,
+         "damage totals bring the target down");
    end;
 
    if Smoke_Check.Failure_Count = 0 then
