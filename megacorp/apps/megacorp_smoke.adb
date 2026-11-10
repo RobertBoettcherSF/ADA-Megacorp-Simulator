@@ -25,6 +25,7 @@ with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Host;
 with Megacorp.Map;
 with Megacorp.Path;
+with Megacorp.Peds;
 with Megacorp.Parameters;
 with Megacorp.RNG;
 with Smoke_Check;
@@ -51,9 +52,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.5.0"
+     (Megacorp.Version = "0.6.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.5.0");
+      "version 0.6.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -468,6 +469,93 @@ begin
       Smoke_Check.Expect
         (Route.Kind (Tight) = Route.Budget_Exceeded,
          "search stops at the budget");
+   end;
+
+   declare
+      package Map renames Megacorp.Map;
+      package Peds renames Megacorp.Peds;
+      use type Ada.Containers.Count_Type;
+      use type Peds.Frame_Lists.Vector;
+      use type Peds.State_Kind;
+
+      Lane : constant Map.City := Map.Blank (1, 6);
+      Hall : constant Map.City := Map.Blank (5, 3);
+      One  : constant Peds.Ped :=
+        Peds.Spawn
+          (1, (X => 1, Y => 1), (X => 1, Y => 6), Lane);
+      Due  : constant Natural :=
+        5 * Peds.Ticks_To_Cross (Peds.Default_Speed);
+      First : constant Peds.Frame_Lists.Vector :=
+        Peds.Run (Lane, (1 => One), Due);
+      Again : constant Peds.Frame_Lists.Vector :=
+        Peds.Run (Lane, (1 => One), Due);
+      East : constant Peds.Ped :=
+        Peds.Spawn
+          (1, (X => 1, Y => 2), (X => 5, Y => 2), Hall);
+      West : constant Peds.Ped :=
+        Peds.Spawn
+          (2, (X => 5, Y => 2), (X => 1, Y => 2), Hall);
+      Meet : constant Peds.Frame_Lists.Vector :=
+        Peds.Run (Hall, (1 => East, 2 => West), 400);
+      Same : constant Peds.Frame_Lists.Vector :=
+        Peds.Run (Hall, (1 => East, 2 => West), 400);
+      On_Time : Boolean := False;
+      Still_Going : Boolean := False;
+      Shared : Boolean := False;
+      East_Home : Boolean := False;
+      West_Home : Boolean := False;
+   begin
+      for I in First.First_Index .. First.Last_Index loop
+         if First (I).Tick = Due
+           and then First (I).State = Peds.Arrived
+           and then First (I).X = 1
+           and then First (I).Y = 6
+         then
+            On_Time := True;
+         end if;
+         if First (I).Tick = Due - 1
+           and then First (I).State /= Peds.Arrived
+         then
+            Still_Going := True;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (First.Length = Ada.Containers.Count_Type (Due + 1)
+         and then On_Time
+         and then Still_Going
+         and then First = Again,
+         "ped arrives on the expected tick");
+
+      for I in Meet.First_Index .. Meet.Last_Index loop
+         for J in I + 1 .. Meet.Last_Index loop
+            if Meet (I).Tick = Meet (J).Tick
+              and then Meet (I).X = Meet (J).X
+              and then Meet (I).Y = Meet (J).Y
+            then
+               Shared := True;
+            end if;
+         end loop;
+         if Meet (I).Ident = 1
+           and then Meet (I).State = Peds.Arrived
+           and then Meet (I).X = 5
+           and then Meet (I).Y = 2
+         then
+            East_Home := True;
+         end if;
+         if Meet (I).Ident = 2
+           and then Meet (I).State = Peds.Arrived
+           and then Meet (I).X = 1
+           and then Meet (I).Y = 2
+         then
+            West_Home := True;
+         end if;
+      end loop;
+      Smoke_Check.Expect
+        (not Shared
+         and then East_Home
+         and then West_Home
+         and then Meet = Same,
+         "two peds pass and both arrive");
    end;
 
    if Smoke_Check.Failure_Count = 0 then

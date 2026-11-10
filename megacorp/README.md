@@ -1,7 +1,7 @@
-# Megacorp Simulator 0.5.0
+# Megacorp Simulator 0.6.0
 
-Headless Ada core for Megacorp Simulator. Version 0.5.0 adds A*
-pathfinding on the city map (design items 1–5). Later packages are
+Headless Ada core for Megacorp Simulator. Version 0.6.0 adds ped
+movement on a fixed tick (design items 1–6). Later packages are
 still specs. FreeSynd stays elsewhere in the repository as a logic
 reference and is not built here.
 
@@ -41,9 +41,9 @@ From this directory:
 That builds with `gprbuild -P megacorp.gpr -p`, regenerates the
 tileset with `tools/gen_tileset.py`, runs `bin/megacorp` and
 `bin/megacorp_smoke`, and rewrites `../web/data/` from the Ada map
-export, including precomputed walk and drive paths. It also writes
-`dist/megacorp_v0.5.0.zip` for local use; that archive is not a
-deliverable.
+export, including precomputed walk and drive paths and ped traces.
+It also writes `dist/megacorp_v0.6.0.zip` for local use; that
+archive is not a deliverable.
 
 The same steps by hand:
 
@@ -56,7 +56,8 @@ gprbuild -P megacorp.gpr -p
 `megacorp.gpr` builds the static library (`megacorp_lib.gpr`) and both
 executables. `bin/megacorp` prints the version, the generator
 parameters, and a text sample of seed 42. `bin/megacorp --export DIR`
-writes `index.json` and one JSON map per fixed seed (1, 42, 100).
+writes `index.json`, one JSON map per fixed seed (1, 42, 100),
+and `encounter.json` for the two-ped meeting.
 `bin/megacorp_smoke` exits 0 when the smoke checks pass.
 
 Assertions and contracts are compiled in. Warnings and GNAT style
@@ -76,7 +77,7 @@ Build products (`obj/`, `lib/`, `bin/`) are not committed. The
 exported JSON under `web/data/` is committed so the page can be opened
 without a local build.
 
-## What 0.5.0 contains
+## What 0.6.0 contains
 
 Real code: version, generator parameters (defaults 4 corporations,
 40 regions, 128 by 128 city maps), the play-mode re-roll rule, a
@@ -102,17 +103,25 @@ step is refused when it would cut a blocked corner. The result is a
 tile list, `No_Path`, or `Budget_Exceeded`. Tie-breaking is fixed, so
 the same query repeats the same path.
 
+`Megacorp.Peds` advances a ped along a walk route by a fixed tick.
+Position inside a tile is an integer number of sub-tile steps (8 per
+tile). Facing is one of eight directions. Speed is steps per tick.
+The state is standing, walking, or arrived. Peds occupy tiles. The
+ped with the greater id waits, then repaths around occupied tiles;
+the lower id keeps its route. The same inputs produce the same trace.
+
 `web/index.html` draws the exported seeds. Flat view is one colour per
 terrain. Isometric view uses the atlas and the exported tile id, back
 to front, with building stacks. Each seed includes Ada-computed walk
-and drive paths, plus a walk into the river that has no path. The
-page only draws those paths. Zoom and hover work in both views.
+and drive paths, plus a walk into the river that has no path, and a
+per-tick trace for the walk. `encounter.json` is two peds meeting.
+Play, pause, and step replay the trace and draw a marker with its
+facing. The page does not simulate. Zoom and hover work in both views.
 
-Shells only, for later items: `Types`, `Assets`,
-`Assets.Placeholder`, `Data.Virtual_FS`, `World`, `World.Gen`,
-`Map.Gen`, `Path`, `Peds`, `Actions`, `Behaviour`, `Weapons`, `Shots`,
-`Vehicles`, `Mission`, `Mission.Gen`, `Agents`, `Research`, `Session`,
-`Save`, `API`. There is no Syndicate asset package.
+Shells only, for later items: `Types`, `Assets`, `World`, `World.Gen`,
+`Map.Gen`, `Actions`, `Behaviour`, `Weapons`, `Shots`, `Vehicles`,
+`Mission`, `Mission.Gen`, `Agents`, `Research`, `Session`, `Save`,
+`API`. There is no Syndicate asset package.
 
 ## Licence
 

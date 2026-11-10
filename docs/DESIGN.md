@@ -2,6 +2,14 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.6.0, item 6
+
+`Megacorp.Peds` walks a `Megacorp.Path` route on a fixed tick. A ped stores the tile it stands on, an integer count of sub-tile steps toward the next tile (`Steps_Per_Tile` is 8; 0 is the centre), an 8-way facing, a speed in sub-tile steps per tick, and a state: `Standing`, `Walking`, or `Arrived`. There is no floating point. Each tick moves the ped along the route and sets facing from the step it is taking.
+
+Peds block each other. A ped occupies its current tile, and also the next tile once a crossing has started. Ticks are applied in ascending ped id, so two peds cannot both claim one free tile. If the next tile is taken, the ped waits. After three ticks the ped with the greater id repaths from where it stands, and that one search treats the other peds' tiles as blocked. The lower id keeps its route. That is enough for two peds meeting in a corridor that has a side tile: they never share a tile, and both arrive. The same run twice is the same trace.
+
+`Path.Find` can take an extra set of blocked tiles for that repath. The start tile is not treated as blocked. `bin/megacorp --export` writes a per-tick trace for the prepared walk on seeds 1, 42, and 100, and a two-ped meeting on a 5×3 map (`encounter.json`). The browser page plays, pauses, and steps that trace and draws a marker with a facing stroke in both views. It does not simulate.
+
 ### 2026-11-10 — version 0.5.0, item 5
 
 `Megacorp.Path` searches the city grid with A*. Walk steps need the walkable flag. Drive steps need the drivable flag (roads in the test layout). Movement is 8-way. A diagonal is allowed only when both orthogonal tiles it crosses are passable, so a search cannot cut a blocked corner. Orthogonal cost is 10 and diagonal cost is 14, both integers. The octile heuristic matches those costs. When two nodes share a score, the smaller heuristic wins, then the smaller Y, then the smaller X, so one map and one pair of endpoints produce one path. The result is `Found` with the tile list, `No_Path`, or `Budget_Exceeded` when the expansion budget runs out. The default budget is 65536 node expansions.
@@ -46,7 +54,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–5 (version 0.5.0) are implemented under `megacorp/`. The browser check page is `web/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–6 (version 0.6.0) are implemented under `megacorp/`. The browser check page is `web/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -409,7 +417,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 ### Phase B — Headless simulation
 
 5. **Walkability and pathfinding** on the in-memory map. Done in 0.5.0 for the grid, with separate walk and drive rules, 8-way steps that do not cut blocked corners, and a node budget. Depends on: 3, 2. Try: the smoke test, and the browser page's prepared paths for seeds 1, 42, and 100. Size: large (`pedpathfinding.cpp` 2,755 lines — expect a careful rewrite, not a dump). Vertical movement inside a single tile column is still later work; height is stored, and this search stays on the 2D grid.
-6. **Peds and movement.** Place a ped, walk along a path, animate time with fixed ticks. Depends on: 5. Try: a log of positions after N ticks. Size: medium (`ped.cpp` is 3,184 lines overall; this item is the movement slice).
+6. **Peds and movement.** Done in 0.6.0 for one ped on a path: integer sub-tile steps, 8-way facing, speed, and the states standing, walking, and arrived. A fixed tick advances the route. Peds block each other; after a short wait the higher id repaths around occupied tiles, and the lower id keeps its route. Depends on: 5. Try: the smoke test (arrival tick, a two-ped meeting, identical traces) and the browser page's play, pause, and step controls. Size: medium (`ped.cpp` is 3,184 lines overall; this item is the movement slice).
 7. **Action queue.** Walk, wait, pickup, drop, enter/leave vehicle (vehicle can be stubbed). Depends on: 6. Try: scripted action list reaches a tile and picks up an item. Size: medium (`ia/action` + `pedactions` ~2,000+ lines).
 8. **Weapons, shots, damage, death.** Own data-driven weapon table (not Syndicate data; FreeSynd `weapons.dat` is only a reference for ideas). Seeded spread. Depends on: 6, 2. Try: two peds, one shot, predictable health with a fixed seed. Size: medium (`weapon`/`shot` ~3,480 lines together in the reference tree).
 9. **Vehicles.** Drive on roads, enter/exit, collisions of the same kind as the reference. Depends on: 7. Try: ped enters a car and moves. Size: medium (`vehicle` 878 + train in the reference tree).

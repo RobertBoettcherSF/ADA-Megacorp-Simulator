@@ -20,6 +20,7 @@ with Ada.Text_IO;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Path;
+with Megacorp.Peds;
 
 package body Megacorp.Map is
    package Placeholder renames Megacorp.Assets.Placeholder;
@@ -97,6 +98,23 @@ package body Megacorp.Map is
       Tiles : Placeholder.Tileset);
    procedure Write_Index
      (Path : String; Version : String);
+   function Facing_Token (Dir : Eight_Way) return String;
+   function State_Token (Kind : Peds.State_Kind) return String;
+   procedure Write_Frame
+     (File : Ada.Text_IO.File_Type;
+      Item : Peds.Frame;
+      Last_Item : Boolean);
+   procedure Write_Ped_Trace
+     (File : Ada.Text_IO.File_Type;
+      Trace : Peds.Frame_Lists.Vector;
+      Who : Peds.Ped_Id;
+      Last_Item : Boolean);
+   procedure Write_Motion
+     (File : Ada.Text_IO.File_Type; M : City);
+   procedure Write_Encounter
+     (Target : String;
+      Version : String;
+      Tiles : Placeholder.Tileset);
    function Bare_Directory (Directory : String) return String;
 
    function Layout_Seed (M : City) return RNG.Word is
@@ -488,6 +506,8 @@ package body Megacorp.Map is
       end loop;
       Ada.Text_IO.Put_Line (File, "  ],");
       Write_Paths (File, M);
+      Ada.Text_IO.Put_Line (File, ",");
+      Write_Motion (File, M);
       Ada.Text_IO.Put_Line (File, "}");
       Ada.Text_IO.Close (File);
    exception
@@ -514,12 +534,13 @@ package body Megacorp.Map is
             "    {""seed"": " & Trim (RNG.Word'Image (Seed))
             & ", ""file"": ""seed-" & Trim (RNG.Word'Image (Seed))
             & ".json""}");
-         if Index < Export_Seeds'Last then
-            Ada.Text_IO.Put_Line (File, ",");
-         else
-            Ada.Text_IO.New_Line (File);
-         end if;
+         Ada.Text_IO.Put_Line (File, ",");
       end loop;
+      Ada.Text_IO.Put_Line
+        (File,
+         "    {""seed"": 0, ""file"": ""encounter.json"",");
+      Ada.Text_IO.Put_Line
+        (File, "     ""label"": ""Two peds""}");
       Ada.Text_IO.Put_Line (File, "  ]");
       Ada.Text_IO.Put_Line (File, "}");
       Ada.Text_IO.Close (File);
@@ -662,6 +683,203 @@ package body Megacorp.Map is
       Ada.Text_IO.Put_Line (File, "  ]");
    end Write_Paths;
 
+   function Facing_Token (Dir : Eight_Way) return String is
+   begin
+      case Dir is
+         when North =>
+            return "north";
+         when East =>
+            return "east";
+         when South =>
+            return "south";
+         when West =>
+            return "west";
+         when North_East =>
+            return "north_east";
+         when South_East =>
+            return "south_east";
+         when South_West =>
+            return "south_west";
+         when North_West =>
+            return "north_west";
+      end case;
+   end Facing_Token;
+
+   function State_Token (Kind : Peds.State_Kind) return String is
+   begin
+      case Kind is
+         when Peds.Standing =>
+            return "standing";
+         when Peds.Walking =>
+            return "walking";
+         when Peds.Arrived =>
+            return "arrived";
+      end case;
+   end State_Token;
+
+   procedure Write_Frame
+     (File : Ada.Text_IO.File_Type;
+      Item : Peds.Frame;
+      Last_Item : Boolean)
+   is
+   begin
+      Ada.Text_IO.Put (File, "          {""t"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Item.Tick)));
+      Ada.Text_IO.Put (File, ",""x"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Item.X)));
+      Ada.Text_IO.Put (File, ",""y"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Item.Y)));
+      Ada.Text_IO.Put (File, ",""along"":");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Item.Along)));
+      Ada.Text_IO.Put (File, ",""facing"":""");
+      Ada.Text_IO.Put (File, Facing_Token (Item.Facing));
+      Ada.Text_IO.Put (File, """,""state"":""");
+      Ada.Text_IO.Put (File, State_Token (Item.State));
+      Ada.Text_IO.Put (File, """}");
+      if Last_Item then
+         Ada.Text_IO.New_Line (File);
+      else
+         Ada.Text_IO.Put_Line (File, ",");
+      end if;
+   end Write_Frame;
+
+   procedure Write_Ped_Trace
+     (File : Ada.Text_IO.File_Type;
+      Trace : Peds.Frame_Lists.Vector;
+      Who : Peds.Ped_Id;
+      Last_Item : Boolean)
+   is
+      Count : Natural := 0;
+      Seen  : Natural := 0;
+   begin
+      for I in Trace.First_Index .. Trace.Last_Index loop
+         if Trace (I).Ident = Who then
+            Count := Count + 1;
+         end if;
+      end loop;
+      Ada.Text_IO.Put_Line (File, "      {");
+      Ada.Text_IO.Put (File, "        ""id"": ");
+      Ada.Text_IO.Put (File, Trim (Integer'Image (Integer (Who))));
+      Ada.Text_IO.Put_Line (File, ",");
+      Ada.Text_IO.Put_Line (File, "        ""frames"": [");
+      for I in Trace.First_Index .. Trace.Last_Index loop
+         if Trace (I).Ident = Who then
+            Seen := Seen + 1;
+            Write_Frame (File, Trace (I), Seen = Count);
+         end if;
+      end loop;
+      Ada.Text_IO.Put_Line (File, "        ]");
+      if Last_Item then
+         Ada.Text_IO.Put_Line (File, "      }");
+      else
+         Ada.Text_IO.Put_Line (File, "      },");
+      end if;
+   end Write_Ped_Trace;
+
+   procedure Write_Motion
+     (File : Ada.Text_IO.File_Type; M : City)
+   is
+      Walk_A : constant Point := Locate (M, Pavement, False);
+      Walk_B : constant Point := Locate (M, Pavement, True);
+      Walker : constant Peds.Ped := Peds.Spawn (1, Walk_A, Walk_B, M);
+      Route  : constant Path.Result :=
+        Path.Find (M, Walk_A, Walk_B, Path.Walk);
+      Span   : constant Natural :=
+        Peds.Ticks_To_Cross (Peds.Default_Speed);
+   begin
+      pragma Assert (Path.Kind (Route) = Path.Found);
+      pragma Assert (Path.Length (Route) > 1);
+      declare
+         Cap   : constant Natural :=
+           (Path.Length (Route) - 1) * Span;
+         Trace : constant Peds.Frame_Lists.Vector :=
+           Peds.Run (M, (1 => Walker), Cap);
+      begin
+         Ada.Text_IO.Put_Line (File, "  ""motion"": [");
+         Ada.Text_IO.Put_Line (File, "    {");
+         Ada.Text_IO.Put_Line
+           (File, "      ""label"": ""Walk across the blocks"",");
+         Ada.Text_IO.Put (File, "      ""steps_per_tile"": ");
+         Ada.Text_IO.Put
+           (File, Trim (Integer'Image (Peds.Steps_Per_Tile)));
+         Ada.Text_IO.Put_Line (File, ",");
+         Ada.Text_IO.Put_Line (File, "      ""peds"": [");
+         Write_Ped_Trace (File, Trace, 1, True);
+         Ada.Text_IO.Put_Line (File, "      ]");
+         Ada.Text_IO.Put_Line (File, "    }");
+         Ada.Text_IO.Put_Line (File, "  ]");
+      end;
+   end Write_Motion;
+
+   procedure Write_Encounter
+     (Target : String;
+      Version : String;
+      Tiles : Placeholder.Tileset)
+   is
+      Hall  : constant City := Blank (5, 3);
+      East  : constant Peds.Ped :=
+        Peds.Spawn (1, (X => 1, Y => 2), (X => 5, Y => 2), Hall);
+      West  : constant Peds.Ped :=
+        Peds.Spawn (2, (X => 5, Y => 2), (X => 1, Y => 2), Hall);
+      Trace : constant Peds.Frame_Lists.Vector :=
+        Peds.Run (Hall, (1 => East, 2 => West), 400);
+      File  : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Target);
+      Ada.Text_IO.Put_Line (File, "{");
+      Ada.Text_IO.Put_Line
+        (File, "  ""version"": """ & Version & """,");
+      Ada.Text_IO.Put_Line (File, "  ""seed"": 0,");
+      Ada.Text_IO.Put_Line (File, "  ""label"": ""Two peds"",");
+      Ada.Text_IO.Put_Line (File, "  ""width"": 5,");
+      Ada.Text_IO.Put_Line (File, "  ""height"": 3,");
+      Ada.Text_IO.Put_Line (File, "  ""legend"": {");
+      Ada.Text_IO.Put_Line (File, "    ""."": ""open"",");
+      Ada.Text_IO.Put_Line (File, "    ""+"": ""road"",");
+      Ada.Text_IO.Put_Line (File, "    ""="": ""pavement"",");
+      Ada.Text_IO.Put_Line (File, "    ""B"": ""building"",");
+      Ada.Text_IO.Put_Line (File, "    ""~"": ""water""");
+      Ada.Text_IO.Put_Line (File, "  },");
+      Ada.Text_IO.Put_Line (File, "  ""rows"": [");
+      for Y in 1 .. Hall.Height loop
+         Ada.Text_IO.Put
+           (File, "    """ & Row_Image (Hall, Y, Tiles) & """");
+         if Y < Hall.Height then
+            Ada.Text_IO.Put_Line (File, ",");
+         else
+            Ada.Text_IO.New_Line (File);
+         end if;
+      end loop;
+      Ada.Text_IO.Put_Line (File, "  ],");
+      Ada.Text_IO.Put_Line (File, "  ""paths"": [");
+      Put_Route
+        (File, Hall, "Two peds meet", Path.Walk,
+         (X => 1, Y => 2), (X => 5, Y => 2), True);
+      Ada.Text_IO.Put_Line (File, "  ],");
+      Ada.Text_IO.Put_Line (File, "  ""motion"": [");
+      Ada.Text_IO.Put_Line (File, "    {");
+      Ada.Text_IO.Put_Line
+        (File, "      ""label"": ""Two peds meet"",");
+      Ada.Text_IO.Put (File, "      ""steps_per_tile"": ");
+      Ada.Text_IO.Put
+        (File, Trim (Integer'Image (Peds.Steps_Per_Tile)));
+      Ada.Text_IO.Put_Line (File, ",");
+      Ada.Text_IO.Put_Line (File, "      ""peds"": [");
+      Write_Ped_Trace (File, Trace, 1, False);
+      Write_Ped_Trace (File, Trace, 2, True);
+      Ada.Text_IO.Put_Line (File, "      ]");
+      Ada.Text_IO.Put_Line (File, "    }");
+      Ada.Text_IO.Put_Line (File, "  ]");
+      Ada.Text_IO.Put_Line (File, "}");
+      Ada.Text_IO.Close (File);
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (File) then
+            Ada.Text_IO.Close (File);
+         end if;
+         raise;
+   end Write_Encounter;
+
    function Parent_Directory (Path : String) return String is
       Bare : constant String := Bare_Directory (Path);
       Last : Natural := Bare'Last;
@@ -697,6 +915,8 @@ package body Megacorp.Map is
                Tiles);
          end;
       end loop;
+      Write_Encounter
+        (Folder & "/encounter.json", Version, Tiles);
       Write_Index (Folder & "/index.json", Version);
    end Export_Maps;
 
