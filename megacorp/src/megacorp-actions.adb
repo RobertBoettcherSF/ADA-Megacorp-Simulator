@@ -1,19 +1,7 @@
---  Megacorp Simulator
---  Copyright (C) 2026  the Megacorp Simulator authors
---
---  This program is free software; you can redistribute it and/or
---  modify it under the terms of the GNU General Public License as
---  published by the Free Software Foundation; either version 2 of
---  the License, or (at your option) any later version.
---
---  This program is distributed in the hope that it will be useful,
---  but WITHOUT ANY WARRANTY; without even the implied warranty of
---  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
---  GNU General Public License for more details.
---
---  You should have received a copy of the GNU General Public License
---  along with this program.  If not, see
---  <https://www.gnu.org/licenses/>.
+--  SPDX-License-Identifier: MIT
+--  Copyright (c) 2026 Robert Boettcher
+
+with Megacorp.Shots;
 
 package body Megacorp.Actions is
    use type Peds.State_Kind;
@@ -34,7 +22,12 @@ package body Megacorp.Actions is
    procedure Resolve
      (Group : in out Cast;
       Index : Positive;
+      M : Map.City;
       Items : in out Bag);
+   procedure Shoot_Step
+     (Group : in out Cast;
+      Index : Positive;
+      M : Map.City);
    procedure Remember (A : in out Actor; Had : Boolean; Old : Natural);
    function Any_Here (Items : Bag) return Boolean;
    function Idle (Group : Cast) return Boolean;
@@ -116,19 +109,47 @@ package body Megacorp.Actions is
          when Pick_Up =>
             return "pick_up "
               & Trim (Integer'Image (Integer (A.Item)));
+         when Shoot_At =>
+            return "shoot_at "
+              & Trim (Integer'Image (Integer (A.Foe)))
+              & " " & Weapons.Token (A.Gun);
       end case;
    end Token;
+
+   function Make_Shoot
+     (Target : Peds.Ped_Id; Gun : Weapons.Kind) return Action
+   is
+   begin
+      return
+        (Which => Shoot_At,
+         Foe => Target,
+         Gun => Gun,
+         Aim_Left => 1,
+         Gap => 0);
+   end Make_Shoot;
 
    function Recruit
      (Who : Peds.Ped_Id;
       At_Point : Map.Point;
-      M : Map.City) return Actor
+      M : Map.City;
+      Seed : RNG.Word := 1) return Actor
    is
       A : Actor;
    begin
       A.Walker := Peds.Place (Who, At_Point, M);
+      A.Seed := Seed;
       return A;
    end Recruit;
+
+   procedure Arm
+     (Group : in out Cast;
+      Index : Positive;
+      Gun : Weapons.Kind;
+      Rounds : Natural)
+   is
+   begin
+      Peds.Arm (Group (Index).Walker, Gun, Rounds);
+   end Arm;
 
    function Length (A : Actor) return Natural is
    begin
@@ -195,6 +216,21 @@ package body Megacorp.Actions is
    begin
       return Peds.State_Of (A.Walker);
    end Ped_State;
+
+   function Ped_Health (A : Actor) return Natural is
+   begin
+      return Peds.Health_Of (A.Walker);
+   end Ped_Health;
+
+   function Ped_Alive (A : Actor) return Boolean is
+   begin
+      return Peds.Is_Alive (A.Walker);
+   end Ped_Alive;
+
+   function Ped_Ammo (A : Actor) return Natural is
+   begin
+      return Peds.Ammo_Of (A.Walker);
+   end Ped_Ammo;
 
    function Distinct (Group : Cast) return Boolean is
    begin
@@ -367,14 +403,92 @@ package body Megacorp.Actions is
                   end if;
                end if;
             end if;
-         when Wait | Turn_To | Pick_Up =>
+         when Wait | Turn_To | Pick_Up | Shoot_At =>
             null;
       end case;
    end Prepare;
 
+   procedure Shoot_Step
+     (Group : in out Cast;
+      Index : Positive;
+      M : Map.City)
+   is
+      Gun    : Weapons.Kind;
+      Slot   : Natural;
+      From_P : Map.Point;
+      To_P   : Map.Point;
+      Dice   : RNG.Generator;
+      Landed : Boolean;
+      Stats  : Weapons.Stats;
+   begin
+      Group (Index).Fired_Now := False;
+      if Group (Index).Live_Count = 0
+        or else Group (Index).Live (1).Which /= Shoot_At
+      then
+         return;
+      end if;
+      Gun := Group (Index).Live (1).Gun;
+      Stats := Weapons.Profile (Gun);
+      Slot := Find_Actor (Group, Group (Index).Live (1).Foe);
+      if Slot = 0 or else not Peds.Is_Alive (Group (Slot).Walker) then
+         Group (Index).Failed := True;
+         return;
+      end if;
+      From_P :=
+        (X => Peds.Tile_X (Group (Index).Walker),
+         Y => Peds.Tile_Y (Group (Index).Walker));
+      To_P :=
+        (X => Peds.Tile_X (Group (Slot).Walker),
+         Y => Peds.Tile_Y (Group (Slot).Walker));
+      Peds.Face_Toward (Group (Index).Walker, To_P);
+      if Group (Index).Live (1).Aim_Left > 0 then
+         Group (Index).Live (1).Aim_Left :=
+           Group (Index).Live (1).Aim_Left - 1;
+         return;
+      end if;
+      if Group (Index).Live (1).Gap > 0 then
+         Group (Index).Live (1).Gap := Group (Index).Live (1).Gap - 1;
+         return;
+      end if;
+      if not Shots.In_Range (Gun, From_P, To_P)
+        or else Shots.Blocked (M, From_P, To_P)
+        or else Peds.Ammo_Of (Group (Index).Walker) = 0
+      then
+         Group (Index).Failed := True;
+         return;
+      end if;
+      Peds.Spend_Round (Group (Index).Walker);
+      Group (Index).Shots_Fired := Group (Index).Shots_Fired + 1;
+      Dice := RNG.Child
+        (RNG.Make (Group (Index).Seed),
+         RNG.Mission,
+         RNG.Stream_Index
+           (Peds.Ident (Group (Index).Walker) * 1000
+            + Group (Index).Shots_Fired));
+      Landed := Shots.Lands (Gun, From_P, To_P, Dice);
+      Group (Index).Fired_Now := True;
+      Group (Index).Fired_Hit := Landed;
+      Group (Index).Fired_X := To_P.X;
+      Group (Index).Fired_Y := To_P.Y;
+      if Landed then
+         Peds.Hurt (Group (Slot).Walker, Stats.Damage);
+         if not Peds.Is_Alive (Group (Slot).Walker) then
+            Clear_Queue (Group (Slot));
+            Drop_Front (Group (Index));
+            return;
+         end if;
+      end if;
+      if Peds.Ammo_Of (Group (Index).Walker) = 0 then
+         Group (Index).Failed := True;
+         return;
+      end if;
+      Group (Index).Live (1).Gap := Stats.Rate - 1;
+   end Shoot_Step;
+
    procedure Resolve
      (Group : in out Cast;
       Index : Positive;
+      M : Map.City;
       Items : in out Bag)
    is
       Slot : Natural;
@@ -425,6 +539,11 @@ package body Megacorp.Actions is
                Items (Slot).Here := False;
                Drop_Front (Group (Index));
             end if;
+         when Shoot_At =>
+            Shoot_Step (Group, Index, M);
+            if Group (Index).Failed then
+               Clear_Queue (Group (Index));
+            end if;
       end case;
    end Resolve;
 
@@ -474,13 +593,16 @@ package body Megacorp.Actions is
       Peds.Tick (Bodies, M);
       for I in Group'Range loop
          Group (I).Walker := Bodies (I);
+         Group (I).Fired_Now := False;
+      end loop;
+      for I in Group'Range loop
          Had := Group (I).Live_Count > 0;
          Old := Group (I).Live_Count;
          if Had then
             Group (I).Action := Token_Strings.To_Bounded_String
               (Token (Group (I).Live (1)));
          end if;
-         Resolve (Group, I, Items);
+         Resolve (Group, I, M, Items);
          Remember (Group (I), Had, Old);
       end loop;
    end Tick;
@@ -527,6 +649,13 @@ package body Megacorp.Actions is
          Shot.Rest_Count := Group (I).Rest_Count;
          Shot.Rest := Group (I).Rest;
          Shot.Item_Here := Here;
+         Shot.Health := Peds.Health_Of (Group (I).Walker);
+         Shot.Ammo := Peds.Ammo_Of (Group (I).Walker);
+         Shot.Alive := Peds.Is_Alive (Group (I).Walker);
+         Shot.Fired := Group (I).Fired_Now;
+         Shot.Landed := Group (I).Fired_Hit;
+         Shot.At_X := Group (I).Fired_X;
+         Shot.At_Y := Group (I).Fired_Y;
          Trace.Append (Shot);
       end loop;
    end Append_Shots;

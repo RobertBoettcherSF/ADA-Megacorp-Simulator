@@ -1,22 +1,9 @@
---  Megacorp Simulator
---  Copyright (C) 2026  the Megacorp Simulator authors
---
---  This program is free software; you can redistribute it and/or
---  modify it under the terms of the GNU General Public License as
---  published by the Free Software Foundation; either version 2 of
---  the License, or (at your option) any later version.
---
---  This program is distributed in the hope that it will be useful,
---  but WITHOUT ANY WARRANTY; without even the implied warranty of
---  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
---  GNU General Public License for more details.
---
---  You should have received a copy of the GNU General Public License
---  along with this program.  If not, see
---  <https://www.gnu.org/licenses/>.
+--  SPDX-License-Identifier: MIT
+--  Copyright (c) 2026 Robert Boettcher
 
 with Ada.Containers.Vectors;
 with Megacorp.Map;
+with Megacorp.Weapons;
 use type Ada.Containers.Count_Type;
 use type Megacorp.Map.Point;
 
@@ -35,6 +22,7 @@ package Megacorp.Peds is
    Steps_Per_Tile : constant := 8;
    Default_Speed  : constant Positive := 1;
    Wait_Limit     : constant := 3;
+   Full_Health    : constant := 100;
 
    subtype Ped_Id is Positive range 1 .. 8;
 
@@ -64,6 +52,25 @@ package Megacorp.Peds is
    function Facing (P : Ped) return Map.Eight_Way;
    function State_Of (P : Ped) return State_Kind;
    function Speed_Of (P : Ped) return Positive;
+   function Health_Of (P : Ped) return Natural
+     with Post => Health_Of'Result <= Full_Health;
+   function Is_Alive (P : Ped) return Boolean;
+   function Ammo_Of (P : Ped) return Natural;
+
+   procedure Arm
+     (P : in out Ped; Gun : Weapons.Kind; Rounds : Natural)
+     with Post => Ammo_Of (P) = Rounds;
+
+   procedure Spend_Round (P : in out Ped)
+     with Pre => Ammo_Of (P) > 0,
+       Post => Ammo_Of (P) = Ammo_Of (P)'Old - 1;
+
+   procedure Hurt (P : in out Ped; Amount : Natural)
+     with Post =>
+       Health_Of (P) <= Health_Of (P)'Old
+       and then (if not Is_Alive (P) then Health_Of (P) = 0);
+
+   procedure Face_Toward (P : in out Ped; Target : Map.Point);
 
    --  A ped standing on one tile, with no route yet.
    function Place
@@ -156,10 +163,15 @@ private
       State   : State_Kind := Standing;
       Wait    : Natural := 0;
       Cursor  : Positive := 1;
+      Health  : Natural := Full_Health;
+      Alive   : Boolean := True;
+      Ammo    : Natural := 0;
       Route   : Step_Lists.Vector;
    end record
      with Type_Invariant =>
        Ped.Along < Steps_Per_Tile
        and then Ped.Speed <= Steps_Per_Tile
-       and then (if Ped.State = Arrived then Ped.Along = 0);
+       and then Ped.Health <= Full_Health
+       and then (if Ped.State = Arrived then Ped.Along = 0)
+       and then (if not Ped.Alive then Ped.Health = 0);
 end Megacorp.Peds;

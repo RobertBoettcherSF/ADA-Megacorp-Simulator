@@ -1,19 +1,5 @@
---  Megacorp Simulator
---  Copyright (C) 2026  the Megacorp Simulator authors
---
---  This program is free software; you can redistribute it and/or
---  modify it under the terms of the GNU General Public License as
---  published by the Free Software Foundation; either version 2 of
---  the License, or (at your option) any later version.
---
---  This program is distributed in the hope that it will be useful,
---  but WITHOUT ANY WARRANTY; without even the implied warranty of
---  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
---  GNU General Public License for more details.
---
---  You should have received a copy of the GNU General Public License
---  along with this program.  If not, see
---  <https://www.gnu.org/licenses/>.
+--  SPDX-License-Identifier: MIT
+--  Copyright (c) 2026 Robert Boettcher
 
 with Megacorp.Path;
 
@@ -152,7 +138,9 @@ package body Megacorp.Peds is
       Who  : Natural;
       Step : Natural;
    begin
-      if Group (Index).State = Arrived then
+      if not Group (Index).Alive
+        or else Group (Index).State = Arrived
+      then
          return;
       end if;
       --  A finished route stays as it is. Standing stays standing,
@@ -286,6 +274,53 @@ package body Megacorp.Peds is
    begin
       return P.Speed;
    end Speed_Of;
+
+   function Health_Of (P : Ped) return Natural is
+   begin
+      return P.Health;
+   end Health_Of;
+
+   function Is_Alive (P : Ped) return Boolean is
+   begin
+      return P.Alive;
+   end Is_Alive;
+
+   function Ammo_Of (P : Ped) return Natural is
+   begin
+      return P.Ammo;
+   end Ammo_Of;
+
+   procedure Arm
+     (P : in out Ped; Gun : Weapons.Kind; Rounds : Natural)
+   is
+      pragma Unreferenced (Gun);
+   begin
+      P.Ammo := Rounds;
+   end Arm;
+
+   procedure Spend_Round (P : in out Ped) is
+   begin
+      P.Ammo := P.Ammo - 1;
+   end Spend_Round;
+
+   procedure Hurt (P : in out Ped; Amount : Natural) is
+   begin
+      if not P.Alive then
+         return;
+      end if;
+      if Amount >= P.Health then
+         P.Health := 0;
+         P.Alive := False;
+         Halt (P);
+      else
+         P.Health := P.Health - Amount;
+      end if;
+   end Hurt;
+
+   procedure Face_Toward (P : in out Ped; Target : Map.Point) is
+   begin
+      P.Facing := Facing_Of ((X => P.X, Y => P.Y), Target);
+   end Face_Toward;
 
    function Place
      (Who : Ped_Id;
