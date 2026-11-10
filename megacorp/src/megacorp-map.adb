@@ -19,10 +19,12 @@ with Ada.Directories;
 with Ada.Text_IO;
 with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
+with Megacorp.Path;
 
 package body Megacorp.Map is
    package Placeholder renames Megacorp.Assets.Placeholder;
    package Disk renames Megacorp.Data.Virtual_FS.Native;
+   use type Path.Status;
 
    --  Below this edge the test layout is open ground only.
    Min_Pattern : constant := 8;
@@ -75,6 +77,19 @@ package body Megacorp.Map is
       Y : Positive;
       Tiles : Placeholder.Tileset) return String;
    function Parent_Directory (Path : String) return String;
+   function Locate
+     (M : City; Kind : Terrain; From_End : Boolean) return Point;
+   function Mode_Token (How : Path.Mode) return String;
+   function Status_Token (Kind : Path.Status) return String;
+   procedure Put_Route
+     (File : Ada.Text_IO.File_Type;
+      M : City;
+      Label : String;
+      How : Path.Mode;
+      Start, Goal : Point;
+      Last_Item : Boolean);
+   procedure Write_Paths
+     (File : Ada.Text_IO.File_Type; M : City);
    procedure Write_Map_File
      (Path : String;
       Version : String;
@@ -312,6 +327,20 @@ package body Megacorp.Map is
       end loop;
    end Lay_Buildings;
 
+   function Blank (Width, Height : Positive) return City is
+      Result : City (Width, Height);
+   begin
+      Result.From_Seed := 0;
+      return Result;
+   end Blank;
+
+   procedure Set_Tile
+     (M : in out City; X, Y : Integer; Cell : Tile)
+   is
+   begin
+      M.Cell (X, Y) := Cell;
+   end Set_Tile;
+
    function Test_Layout
      (From : RNG.Word; Width, Height : Positive) return City
    is
@@ -457,7 +486,8 @@ package body Megacorp.Map is
             Ada.Text_IO.New_Line (File);
          end if;
       end loop;
-      Ada.Text_IO.Put_Line (File, "  ]");
+      Ada.Text_IO.Put_Line (File, "  ],");
+      Write_Paths (File, M);
       Ada.Text_IO.Put_Line (File, "}");
       Ada.Text_IO.Close (File);
    exception
@@ -510,6 +540,127 @@ package body Megacorp.Map is
       end if;
       return Directory;
    end Bare_Directory;
+
+   function Locate
+     (M : City; Kind : Terrain; From_End : Boolean) return Point
+   is
+      Found : Point := (X => 1, Y => 1);
+      Seen  : Boolean := False;
+   begin
+      for Y in 1 .. M.Height loop
+         for X in 1 .. M.Width loop
+            if M.Cell (X, Y).Kind = Kind then
+               Found := (X => X, Y => Y);
+               Seen := True;
+               if not From_End then
+                  return Found;
+               end if;
+            end if;
+         end loop;
+      end loop;
+      pragma Assert (Seen);
+      return Found;
+   end Locate;
+
+   function Mode_Token (How : Path.Mode) return String is
+   begin
+      case How is
+         when Path.Walk =>
+            return "walk";
+         when Path.Drive =>
+            return "drive";
+      end case;
+   end Mode_Token;
+
+   function Status_Token (Kind : Path.Status) return String is
+   begin
+      case Kind is
+         when Path.Found =>
+            return "found";
+         when Path.No_Path =>
+            return "no_path";
+         when Path.Budget_Exceeded =>
+            return "budget_exceeded";
+      end case;
+   end Status_Token;
+
+   procedure Put_Route
+     (File : Ada.Text_IO.File_Type;
+      M : City;
+      Label : String;
+      How : Path.Mode;
+      Start, Goal : Point;
+      Last_Item : Boolean)
+   is
+      Route : constant Path.Result := Path.Find (M, Start, Goal, How);
+   begin
+      Ada.Text_IO.Put_Line (File, "    {");
+      Ada.Text_IO.Put_Line
+        (File, "      ""label"": """ & Label & """,");
+      Ada.Text_IO.Put_Line
+        (File, "      ""mode"": """ & Mode_Token (How) & """,");
+      Ada.Text_IO.Put_Line
+        (File,
+         "      ""status"": """ & Status_Token (Path.Kind (Route))
+         & """,");
+      Ada.Text_IO.Put_Line
+        (File,
+         "      ""start"": {""x"":" & Trim (Integer'Image (Start.X))
+         & ", ""y"":" & Trim (Integer'Image (Start.Y)) & "},");
+      Ada.Text_IO.Put_Line
+        (File,
+         "      ""goal"": {""x"":" & Trim (Integer'Image (Goal.X))
+         & ", ""y"":" & Trim (Integer'Image (Goal.Y)) & "},");
+      Ada.Text_IO.Put (File, "      ""tiles"": [");
+      if Path.Kind (Route) = Path.Found then
+         Ada.Text_IO.New_Line (File);
+         for I in 1 .. Path.Length (Route) loop
+            Ada.Text_IO.Put
+              (File,
+               "        {""x"":"
+               & Trim (Integer'Image (Path.Step (Route, I).X))
+               & ", ""y"":"
+               & Trim (Integer'Image (Path.Step (Route, I).Y))
+               & "}");
+            if I < Path.Length (Route) then
+               Ada.Text_IO.Put_Line (File, ",");
+            else
+               Ada.Text_IO.New_Line (File);
+            end if;
+         end loop;
+         Ada.Text_IO.Put (File, "      ]");
+      else
+         Ada.Text_IO.Put (File, "]");
+      end if;
+      Ada.Text_IO.New_Line (File);
+      if Last_Item then
+         Ada.Text_IO.Put_Line (File, "    }");
+      else
+         Ada.Text_IO.Put_Line (File, "    },");
+      end if;
+   end Put_Route;
+
+   procedure Write_Paths
+     (File : Ada.Text_IO.File_Type; M : City)
+   is
+      Walk_A : constant Point := Locate (M, Pavement, False);
+      Walk_B : constant Point := Locate (M, Pavement, True);
+      Road_A : constant Point := Locate (M, Road, False);
+      Road_B : constant Point := Locate (M, Road, True);
+      River  : constant Point := Locate (M, Water, False);
+   begin
+      Ada.Text_IO.Put_Line (File, "  ""paths"": [");
+      Put_Route
+        (File, M, "Walk across the blocks", Path.Walk,
+         Walk_A, Walk_B, False);
+      Put_Route
+        (File, M, "Drive along the roads", Path.Drive,
+         Road_A, Road_B, False);
+      Put_Route
+        (File, M, "Walk into the river", Path.Walk,
+         Walk_A, River, True);
+      Ada.Text_IO.Put_Line (File, "  ]");
+   end Write_Paths;
 
    function Parent_Directory (Path : String) return String is
       Bare : constant String := Bare_Directory (Path);

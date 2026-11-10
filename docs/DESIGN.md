@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.5.0, item 5
+
+`Megacorp.Path` searches the city grid with A*. Walk steps need the walkable flag. Drive steps need the drivable flag (roads in the test layout). Movement is 8-way. A diagonal is allowed only when both orthogonal tiles it crosses are passable, so a search cannot cut a blocked corner. Orthogonal cost is 10 and diagonal cost is 14, both integers. The octile heuristic matches those costs. When two nodes share a score, the smaller heuristic wins, then the smaller Y, then the smaller X, so one map and one pair of endpoints produce one path. The result is `Found` with the tile list, `No_Path`, or `Budget_Exceeded` when the expansion budget runs out. The default budget is 65536 node expansions.
+
+`bin/megacorp --export` adds three prepared queries to each of seeds 1, 42, and 100: a walk across the blocks, a drive along the roads, and a walk whose goal is water. The browser offers those queries in a menu and snaps a click to the nearest prepared endpoint. It draws the stored path. It does not search.
+
 ### 2026-11-10 — version 0.4.0, item 4
 
 `Megacorp.Data.Virtual_FS` is a read interface: `Exists`, `Read`, and `List` by a logical path such as `assets/tiles.json`. `Virtual_FS.Native` is the disk backend and the only place asset reads call the host file system. A later WASM host can implement the same `Backend` with OPFS or fetch.
@@ -40,7 +46,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–4 (version 0.4.0) are implemented under `megacorp/`. The browser check page is `web/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–5 (version 0.5.0) are implemented under `megacorp/`. The browser check page is `web/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -402,7 +408,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 
 ### Phase B — Headless simulation
 
-5. **Walkability and pathfinding** on the in-memory map, including vertical tiles. Depends on: 3, 2. Try: unit tests on hand-built maps (A to B, blocked door, stairs). Size: large (`pedpathfinding.cpp` 2,755 lines — expect a careful rewrite, not a dump).
+5. **Walkability and pathfinding** on the in-memory map. Done in 0.5.0 for the grid, with separate walk and drive rules, 8-way steps that do not cut blocked corners, and a node budget. Depends on: 3, 2. Try: the smoke test, and the browser page's prepared paths for seeds 1, 42, and 100. Size: large (`pedpathfinding.cpp` 2,755 lines — expect a careful rewrite, not a dump). Vertical movement inside a single tile column is still later work; height is stored, and this search stays on the 2D grid.
 6. **Peds and movement.** Place a ped, walk along a path, animate time with fixed ticks. Depends on: 5. Try: a log of positions after N ticks. Size: medium (`ped.cpp` is 3,184 lines overall; this item is the movement slice).
 7. **Action queue.** Walk, wait, pickup, drop, enter/leave vehicle (vehicle can be stubbed). Depends on: 6. Try: scripted action list reaches a tile and picks up an item. Size: medium (`ia/action` + `pedactions` ~2,000+ lines).
 8. **Weapons, shots, damage, death.** Own data-driven weapon table (not Syndicate data; FreeSynd `weapons.dat` is only a reference for ideas). Seeded spread. Depends on: 6, 2. Try: two peds, one shot, predictable health with a fixed seed. Size: medium (`weapon`/`shot` ~3,480 lines together in the reference tree).

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Megacorp Simulator 0.4.0</title>
+  <title>Megacorp Simulator 0.5.0</title>
   <style>
     :root {
       color-scheme: dark;
@@ -77,12 +77,15 @@
 <body>
   <header>
     <h1>Megacorp Simulator</h1>
-    <p class="meta">version <span id="version">0.4.0</span>
+    <p class="meta">version <span id="version">0.5.0</span>
       · seed <span id="seed-label">…</span></p>
   </header>
   <div class="controls">
     <label>Seed
       <select id="seed"></select>
+    </label>
+    <label>Path
+      <select id="path"></select>
     </label>
     <button id="view" type="button">Flat view</button>
     <span>
@@ -92,11 +95,12 @@
     </span>
     <div id="legend"></div>
   </div>
+  <p id="path-status" class="readout">Paths are precomputed by Ada.</p>
   <p id="hover" class="readout">Hover a tile.</p>
   <div id="stage"><canvas id="map"></canvas></div>
-  <p class="note">Colours and height shading are drawn from JSON written by
-    the Ada program. This is the seeded test layout, not the later
-    city-block generator.</p>
+  <p class="note">A click snaps to the nearest prepared start or goal.
+    The layout is the seeded test map, not the later city-block
+    generator.</p>
   <script src="js/map.js"></script>
 </body>
 </html>

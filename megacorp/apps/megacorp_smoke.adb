@@ -24,6 +24,7 @@ with Megacorp.Assets.Placeholder;
 with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Host;
 with Megacorp.Map;
+with Megacorp.Path;
 with Megacorp.Parameters;
 with Megacorp.RNG;
 with Smoke_Check;
@@ -33,7 +34,10 @@ procedure Megacorp_Smoke is
    package RNG renames Megacorp.RNG;
    use type RNG.Word;
    use type Megacorp.Map.City;
+   use type Megacorp.Map.Point;
    use type Megacorp.Map.Terrain;
+   use type Megacorp.Path.Result;
+   use type Megacorp.Path.Status;
 
    type Sample is array (Positive range <>) of Integer;
    procedure Shuffle_Sample is new RNG.Shuffle
@@ -47,9 +51,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.4.0"
+     (Megacorp.Version = "0.5.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.4.0");
+      "version 0.5.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -366,6 +370,104 @@ begin
       Smoke_Check.Expect
         (Tiles.Complete (Set) and then Ids_Ok,
          "placeholder tile index");
+   end;
+
+   declare
+      package Map renames Megacorp.Map;
+      package Route renames Megacorp.Path;
+
+      Road_Tile : constant Map.Tile :=
+        (Kind => Map.Road, Level => 1,
+         Walkable => True, Drivable => True);
+      Block_Tile : constant Map.Tile :=
+        (Kind => Map.Building, Level => 2,
+         Walkable => False, Drivable => False);
+      Water_Tile : constant Map.Tile :=
+        (Kind => Map.Water, Level => 0,
+         Walkable => False, Drivable => False);
+
+      Straight : constant Map.City := Map.Blank (1, 6);
+      Around   : Map.City := Map.Blank (5, 5);
+      River    : Map.City := Map.Blank (5, 3);
+      Roads    : Map.City := Map.Blank (5, 5);
+      Line     : Route.Result;
+      Again    : Route.Result;
+      Detour   : Route.Result;
+      Blocked  : Route.Result;
+      Driven   : Route.Result;
+      Tight    : Route.Result;
+      On_Road  : Boolean := True;
+      Goes_Around : Boolean := False;
+   begin
+      Line := Route.Find
+        (Straight, (X => 1, Y => 1), (X => 1, Y => 6),
+         Route.Walk, 100);
+      Again := Route.Find
+        (Straight, (X => 1, Y => 1), (X => 1, Y => 6),
+         Route.Walk, 100);
+      Smoke_Check.Expect
+        (Route.Kind (Line) = Route.Found
+         and then Route.Length (Line) = 6
+         and then Route.Step (Line, 1) = (X => 1, Y => 1)
+         and then Route.Step (Line, 6) = (X => 1, Y => 6)
+         and then Line = Again,
+         "straight path is stable");
+
+      for Y in 1 .. 4 loop
+         Map.Set_Tile (Around, 3, Y, Block_Tile);
+      end loop;
+      Detour := Route.Find
+        (Around, (X => 2, Y => 2), (X => 4, Y => 2),
+         Route.Walk, 100);
+      if Route.Kind (Detour) = Route.Found then
+         for I in 1 .. Route.Length (Detour) loop
+            if Route.Step (Detour, I).Y = 5 then
+               Goes_Around := True;
+            end if;
+         end loop;
+      end if;
+      Smoke_Check.Expect
+        (Route.Kind (Detour) = Route.Found and then Goes_Around,
+         "walk routes around buildings");
+
+      for Y in 1 .. 3 loop
+         Map.Set_Tile (River, 3, Y, Water_Tile);
+      end loop;
+      Blocked := Route.Find
+        (River, (X => 1, Y => 2), (X => 5, Y => 2),
+         Route.Walk, 100);
+      Smoke_Check.Expect
+        (Route.Kind (Blocked) = Route.No_Path,
+         "no walk path across water");
+
+      for I in 1 .. 5 loop
+         Map.Set_Tile (Roads, I, 1, Road_Tile);
+         Map.Set_Tile (Roads, I, 5, Road_Tile);
+         Map.Set_Tile (Roads, 1, I, Road_Tile);
+         Map.Set_Tile (Roads, 5, I, Road_Tile);
+      end loop;
+      Driven := Route.Find
+        (Roads, (X => 1, Y => 1), (X => 5, Y => 5),
+         Route.Drive, 100);
+      if Route.Kind (Driven) = Route.Found then
+         for I in 1 .. Route.Length (Driven) loop
+            On_Road := On_Road
+              and then Map.Tile_At
+                (Roads,
+                 Route.Step (Driven, I).X,
+                 Route.Step (Driven, I).Y).Drivable;
+         end loop;
+      else
+         On_Road := False;
+      end if;
+      Smoke_Check.Expect (On_Road, "drive stays on roads");
+
+      Tight := Route.Find
+        (Straight, (X => 1, Y => 1), (X => 1, Y => 6),
+         Route.Walk, 2);
+      Smoke_Check.Expect
+        (Route.Kind (Tight) = Route.Budget_Exceeded,
+         "search stops at the budget");
    end;
 
    if Smoke_Check.Failure_Count = 0 then

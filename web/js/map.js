@@ -19,6 +19,7 @@ let atlasWidth = 0;
 let view = "iso";
 let tilePx = 6;
 let isoScale = 1;
+let selectedPath = 0;
 
 function shade(code, level) {
   const base = COLOUR[code] || [255, 0, 200];
@@ -80,6 +81,7 @@ function drawFlat(ctx) {
     }
   }
   document.getElementById("zoom-label").textContent = `${tilePx} px`;
+  drawPath(ctx);
 }
 
 function anchor(x, y, scale) {
@@ -135,6 +137,114 @@ function drawIso(ctx) {
     }
   }
   document.getElementById("zoom-label").textContent = `${scale}×`;
+  drawPath(ctx);
+}
+
+function currentPath() {
+  if (!mapData || !mapData.paths || mapData.paths.length === 0) {
+    return null;
+  }
+  return mapData.paths[selectedPath] || mapData.paths[0];
+}
+
+function fillPaths(data) {
+  const select = document.getElementById("path");
+  const status = document.getElementById("path-status");
+  select.replaceChildren();
+  selectedPath = 0;
+  (data.paths || []).forEach((path, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = `${path.label} (${path.status})`;
+    select.append(option);
+  });
+  if (!data.paths || data.paths.length === 0) {
+    status.textContent = "Paths are precomputed by Ada.";
+    return;
+  }
+  status.textContent =
+    "Paths are precomputed by Ada, not searched in the browser.";
+}
+
+function flatCenter(x, y) {
+  return {
+    x: (x - 0.5) * tilePx,
+    y: (y - 0.5) * tilePx
+  };
+}
+
+function isoCenter(x, y) {
+  const cell = cellAt(mapData, x, y);
+  const spot = anchor(x, y, isoScale);
+  const localY = (tileset.cell_height - 1)
+    - cell.level * tileset.level_px
+    - tileset.diamond_height / 2;
+  return {
+    x: spot.sx,
+    y: (spot.sy - spot.cellH) + localY * isoScale
+  };
+}
+
+function markerPoint(x, y) {
+  if (view === "iso") {
+    return isoCenter(x, y);
+  }
+  return flatCenter(x, y);
+}
+
+function drawPath(ctx) {
+  const path = currentPath();
+  if (!path) {
+    return;
+  }
+  const points = path.status === "found"
+    ? path.tiles
+    : [path.start, path.goal];
+  ctx.save();
+  ctx.lineWidth = view === "iso" ? 3 * isoScale : Math.max(2, tilePx / 3);
+  ctx.strokeStyle = "#ffe14a";
+  ctx.fillStyle = "#ffe14a";
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  points.forEach((tile, index) => {
+    const point = markerPoint(tile.x, tile.y);
+    if (index === 0) {
+      ctx.moveTo(point.x, point.y);
+    } else {
+      ctx.lineTo(point.x, point.y);
+    }
+  });
+  if (path.status === "found") {
+    ctx.stroke();
+  }
+  const start = markerPoint(path.start.x, path.start.y);
+  const goal = markerPoint(path.goal.x, path.goal.y);
+  const radius = view === "iso" ? 4 * isoScale : Math.max(3, tilePx / 2);
+  ctx.fillStyle = "#7dffa1";
+  ctx.beginPath();
+  ctx.arc(start.x, start.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ff6b6b";
+  ctx.beginPath();
+  ctx.arc(goal.x, goal.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function nearestPrepared(x, y) {
+  let best = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  (mapData.paths || []).forEach((path, index) => {
+    const start = Math.abs(path.start.x - x) + Math.abs(path.start.y - y);
+    const goal = Math.abs(path.goal.x - x) + Math.abs(path.goal.y - y);
+    const distance = Math.min(start, goal);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = index;
+    }
+  });
+  return best;
 }
 
 function draw() {
@@ -231,6 +341,7 @@ async function loadTileset() {
     tile_width: index.tile_width,
     diamond_height: index.diamond_height,
     cell_height: index.cell_height,
+    level_px: index.level_px,
     byId,
     image
   };
@@ -245,6 +356,7 @@ async function loadFile(file) {
   document.getElementById("version").textContent = mapData.version;
   document.getElementById("seed-label").textContent = String(mapData.seed);
   paintLegend(mapData);
+  fillPaths(mapData);
   draw();
 }
 
@@ -280,6 +392,10 @@ async function main() {
   select.addEventListener("change", () => {
     const entry = index.maps[select.selectedIndex];
     loadFile(entry.file).catch(showError);
+  });
+  document.getElementById("path").addEventListener("change", (event) => {
+    selectedPath = Number(event.target.value);
+    draw();
   });
   document.getElementById("view").addEventListener("click", () => {
     view = view === "iso" ? "flat" : "iso";
@@ -323,6 +439,19 @@ async function main() {
   });
   canvas.addEventListener("mouseleave", () => {
     document.getElementById("hover").textContent = "Hover a tile.";
+  });
+  canvas.addEventListener("click", (event) => {
+    if (!mapData || !mapData.paths) {
+      return;
+    }
+    const point = canvasPoint(event);
+    const tile = view === "iso" ? pickIso(point.x, point.y) : pickFlat(point.x, point.y);
+    if (!tile) {
+      return;
+    }
+    selectedPath = nearestPrepared(tile.x, tile.y);
+    document.getElementById("path").value = String(selectedPath);
+    draw();
   });
   await loadFile(index.maps[select.selectedIndex].file);
 }
