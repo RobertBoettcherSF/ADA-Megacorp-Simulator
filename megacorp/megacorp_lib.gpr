@@ -19,6 +19,7 @@ project Megacorp_Lib is
       "Megacorp.Assets.Placeholder",
       "Megacorp.Data",
       "Megacorp.Data.Virtual_FS",
+      "Megacorp.Data.Virtual_FS.Native",
       "Megacorp.World",
       "Megacorp.World.Gen",
       "Megacorp.Map",

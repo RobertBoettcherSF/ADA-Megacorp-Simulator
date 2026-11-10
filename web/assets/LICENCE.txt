@@ -1,0 +1,9 @@
+Megacorp Simulator placeholder tileset
+
+These pictures are original. They were drawn by
+tools/gen_tileset.py. They are not from Syndicate, Bullfrog,
+or Electronic Arts, and they contain no copied game art.
+
+They are part of Megacorp Simulator and are covered by the
+same licence as the program: GPL-2.0-or-later. See
+megacorp/COPYING.

@@ -17,8 +17,13 @@
 
 with Ada.Directories;
 with Ada.Text_IO;
+with Megacorp.Assets.Placeholder;
+with Megacorp.Data.Virtual_FS.Native;
 
 package body Megacorp.Map is
+   package Placeholder renames Megacorp.Assets.Placeholder;
+   package Disk renames Megacorp.Data.Virtual_FS.Native;
+
    --  Below this edge the test layout is open ground only.
    Min_Pattern : constant := 8;
 
@@ -64,9 +69,17 @@ package body Megacorp.Map is
    procedure Lay_Pavement (M : in out City);
    procedure Lay_Buildings
      (M : in out City; G : in out RNG.Generator);
-   function Row_Image (M : City; Y : Positive) return String;
+   function Hex_Pair (Value : Natural) return String;
+   function Row_Image
+     (M : City;
+      Y : Positive;
+      Tiles : Placeholder.Tileset) return String;
+   function Parent_Directory (Path : String) return String;
    procedure Write_Map_File
-     (Path : String; Version : String; M : City);
+     (Path : String;
+      Version : String;
+      M : City;
+      Tiles : Placeholder.Tileset);
    procedure Write_Index
      (Path : String; Version : String);
    function Bare_Directory (Directory : String) return String;
@@ -376,23 +389,41 @@ package body Megacorp.Map is
       end if;
    end Put_Sample;
 
-   function Row_Image (M : City; Y : Positive) return String is
-      Image : String (1 .. M.Width * 3);
+   function Hex_Pair (Value : Natural) return String is
+      Hex : constant String := "0123456789ABCDEF";
+   begin
+      return Hex (Hex'First + Value / 16)
+        & Hex (Hex'First + Value mod 16);
+   end Hex_Pair;
+
+   function Row_Image
+     (M : City;
+      Y : Positive;
+      Tiles : Placeholder.Tileset) return String
+   is
+      Image : String (1 .. M.Width * 5);
       Place : Positive := 1;
       Cell  : Tile;
+      Id    : Natural;
    begin
       for X in 1 .. M.Width loop
          Cell := M.Cell (X, Y);
+         Id := Placeholder.Tile_Id (Tiles, Cell.Kind, Cell.Level);
          Image (Place) := Terrain_Code (Cell.Kind);
          Image (Place + 1) := Hex_Digit (Cell.Level);
          Image (Place + 2) := Flag_Code (Cell);
-         Place := Place + 3;
+         Image (Place + 3) := Hex_Pair (Id) (1);
+         Image (Place + 4) := Hex_Pair (Id) (2);
+         Place := Place + 5;
       end loop;
       return Image;
    end Row_Image;
 
    procedure Write_Map_File
-     (Path : String; Version : String; M : City)
+     (Path : String;
+      Version : String;
+      M : City;
+      Tiles : Placeholder.Tileset)
    is
       File : Ada.Text_IO.File_Type;
    begin
@@ -418,7 +449,8 @@ package body Megacorp.Map is
       Ada.Text_IO.Put_Line (File, "  },");
       Ada.Text_IO.Put_Line (File, "  ""rows"": [");
       for Y in 1 .. M.Height loop
-         Ada.Text_IO.Put (File, "    """ & Row_Image (M, Y) & """");
+         Ada.Text_IO.Put
+           (File, "    """ & Row_Image (M, Y, Tiles) & """");
          if Y < M.Height then
             Ada.Text_IO.Put_Line (File, ",");
          else
@@ -479,8 +511,25 @@ package body Megacorp.Map is
       return Directory;
    end Bare_Directory;
 
+   function Parent_Directory (Path : String) return String is
+      Bare : constant String := Bare_Directory (Path);
+      Last : Natural := Bare'Last;
+   begin
+      while Last >= Bare'First and then Bare (Last) /= '/' loop
+         Last := Last - 1;
+      end loop;
+      if Last > Bare'First then
+         return Bare (Bare'First .. Last - 1);
+      end if;
+      return ".";
+   end Parent_Directory;
+
    procedure Export_Maps (Directory : String; Version : String) is
       Folder : constant String := Bare_Directory (Directory);
+      Store  : constant Disk.Disk :=
+        Disk.Open (Parent_Directory (Folder));
+      Tiles  : constant Placeholder.Tileset :=
+        Placeholder.Load (Store);
    begin
       Ada.Directories.Create_Path (Folder);
       for Index in Export_Seeds'Range loop
@@ -493,7 +542,8 @@ package body Megacorp.Map is
                & Trim (RNG.Word'Image (Export_Seeds (Index)))
                & ".json",
                Version,
-               M);
+               M,
+               Tiles);
          end;
       end loop;
       Write_Index (Folder & "/index.json", Version);
