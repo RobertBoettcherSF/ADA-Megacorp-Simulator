@@ -1,6 +1,6 @@
 #!/bin/sh
-# Build Megacorp Simulator 0.1.0, run it, and pack sources plus the
-# Linux x86_64 binaries into dist/megacorp_v0.1.0.zip.
+# Build Megacorp Simulator 0.2.0, run it, and pack sources plus the
+# Linux x86_64 binaries into dist/megacorp_v0.2.0.zip.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -35,7 +35,7 @@ echo "---- bin/megacorp_smoke ----"
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-dest=$stage/megacorp_v0.1.0
+dest=$stage/megacorp_v0.2.0
 mkdir -p "$dest/bin" "$dest/src" "$dest/apps"
 
 cp README.md COPYING .gitignore build.sh \
@@ -46,9 +46,9 @@ cp bin/megacorp bin/megacorp_smoke "$dest/bin/"
 chmod 755 "$dest/build.sh" "$dest/bin/megacorp" "$dest/bin/megacorp_smoke"
 
 mkdir -p dist
-rm -f dist/megacorp_v0.1.0.zip
+rm -f dist/megacorp_v0.2.0.zip
 (
    cd "$stage"
-   zip -r -X "$root/dist/megacorp_v0.1.0.zip" megacorp_v0.1.0
+   zip -r -X "$root/dist/megacorp_v0.2.0.zip" megacorp_v0.2.0
 )
-echo "wrote $root/dist/megacorp_v0.1.0.zip"
+echo "wrote $root/dist/megacorp_v0.2.0.zip"

@@ -15,7 +15,7 @@
 --  along with this program.  If not, see
 --  <https://www.gnu.org/licenses/>.
 
---  Root of the simulation core. Version of this skeleton.
+--  Root of the simulation core. Version of this build.
 package Megacorp is
    function Name return String;
    function Version return String;
