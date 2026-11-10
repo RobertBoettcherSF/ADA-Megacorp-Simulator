@@ -18,6 +18,10 @@
 with Ada.Assertions;
 with Ada.Command_Line;
 with Ada.Text_IO;
+with Ada.Containers;
+with Ada.Strings.Fixed;
+with Megacorp.Assets.Placeholder;
+with Megacorp.Data.Virtual_FS.Native;
 with Megacorp.Host;
 with Megacorp.Map;
 with Megacorp.Parameters;
@@ -43,9 +47,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.3.0"
+     (Megacorp.Version = "0.4.0"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.3.0");
+      "version 0.4.0");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
@@ -305,6 +309,63 @@ begin
          and then Full.Height = 128
          and then Map.Layout_Seed (Full) = 42,
          "test layout follows the seed");
+   end;
+
+   declare
+      package Native renames Megacorp.Data.Virtual_FS.Native;
+      package Tiles renames Megacorp.Assets.Placeholder;
+      use type Ada.Containers.Count_Type;
+
+      Store : constant Native.Disk := Native.Open ("../web");
+      Names : constant Megacorp.Data.Virtual_FS.Name_Lists.Vector :=
+        Native.List (Store, "assets");
+      Text  : constant String :=
+        Native.Read (Store, "assets/tiles.json");
+      Set   : constant Tiles.Tileset := Tiles.Load (Store);
+      Listed_Index : Boolean := False;
+      Listed_Atlas : Boolean := False;
+      Ids_Ok : Boolean := True;
+   begin
+      if Names.Length > 0 then
+         for I in 1 .. Positive (Names.Length) loop
+            if Names.Element (I) = "tiles.json" then
+               Listed_Index := True;
+            elsif Names.Element (I) = "atlas.png" then
+               Listed_Atlas := True;
+            end if;
+         end loop;
+      end if;
+      Smoke_Check.Expect
+        (Native.Exists (Store, "assets/tiles.json")
+         and then Ada.Strings.Fixed.Index (Text, """tile_width""") > 0
+         and then Listed_Index
+         and then Listed_Atlas
+         and then not Native.Exists (Store, "assets/missing.txt")
+         and then not Native.Exists (Store, "../secret"),
+         "virtual file system");
+      Raised := False;
+      begin
+         declare
+            Ignored : constant String :=
+              Native.Read (Store, "assets/missing.txt");
+         begin
+            Smoke_Check.Discard (Ignored'Length);
+         end;
+      exception
+         when Ada.Assertions.Assertion_Error =>
+            Raised := True;
+      end;
+      Smoke_Check.Expect (Raised, "missing file is not readable");
+      for Kind in Megacorp.Map.Terrain loop
+         for Level in Megacorp.Map.Height_Level loop
+            Ids_Ok := Ids_Ok
+              and then Tiles.Tile_Id (Set, Kind, Level)
+                = Megacorp.Map.Terrain'Pos (Kind) * 16 + Level;
+         end loop;
+      end loop;
+      Smoke_Check.Expect
+        (Tiles.Complete (Set) and then Ids_Ok,
+         "placeholder tile index");
    end;
 
    if Smoke_Check.Failure_Count = 0 then

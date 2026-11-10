@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### 2026-11-10 — version 0.4.0, item 4
+
+`Megacorp.Data.Virtual_FS` is a read interface: `Exists`, `Read`, and `List` by a logical path such as `assets/tiles.json`. `Virtual_FS.Native` is the disk backend and the only place asset reads call the host file system. A later WASM host can implement the same `Backend` with OPFS or fetch.
+
+The placeholder tileset is original art from `tools/gen_tileset.py` (flat-shaded isometric diamonds and building stacks, one sprite per terrain and height). It is stored as `web/assets/atlas.png` plus `web/assets/tiles.json`, with `web/assets/LICENCE.txt`. `Megacorp.Assets.Placeholder` loads that index through the virtual file system. Tile id is `Terrain'Pos * 16 + height`. Map export writes that id in each cell. The browser draws the id from the atlas; it does not choose the sprite itself. The page toggles between the flat view and an isometric view (back to front, buildings stacked in the sprite). Hover in the isometric view uses the atlas alpha so a tall building is the tile under the cursor.
+
 ### 2026-11-10 — version 0.3.0, item 3
 
 `Megacorp.Map` holds one city. The size comes from `Megacorp.Parameters` (default 128×128, each edge at most 1024). A tile has a terrain (`open`, `road`, `pavement`, `building`, `water`), a height 0..15, and stored walkable and drivable flags. Accessors are bounds-checked. Four- and eight-neighbour steps are there for pathfinding later (X east, Y south, origin 1).
@@ -34,7 +40,7 @@ Sources: [xoshiro256starstar.c](https://prng.di.unimi.it/xoshiro256starstar.c), 
 
 Items below are renumbered **1–28** after those two drops. "Own IP" here is the setting and the art (old question 7), not a choice of software licence. The licence tag (old question 12) is still open; the 0.1.0 skeleton uses GPL-2-or-later headers, matching FreeSynd's file headers and item 1, until that choice is closed.
 
-**Status:** agreed design, updated 10 November 2026. Items 1–3 (version 0.3.0) are implemented under `megacorp/`. The browser check page is `web/`.  
+**Status:** agreed design, updated 10 November 2026. Items 1–4 (version 0.4.0) are implemented under `megacorp/`. The browser check page is `web/`.  
 **Date:** 10 November 2026, Europe/Berlin  
 **Source repo:** https://github.com/RobertBoettcherSF/ADA-Megacorp-Simulator (branch `master`, commit `fa08136b239dbcbb0370a73ef7df4420d3834513`)  
 **Last upstream FreeSynd work:** 19 February 2015, 07:44 Europe/Berlin (`Rework action for police : finished.`, author benblan)  
@@ -392,7 +398,7 @@ Each item is meant to be buildable and testable on its own. “Depends on” lis
 1. **Project skeleton.** GPR, `Megacorp.*` package shells, GPL headers, `Host` (log, clock), generator parameters and the play-mode re-roll rule, assertions (`-gnata`, `Pre` / `Post`, `Type_Invariant`), and a small smoke test. Depends on: nothing. Try: `gprbuild` and the smoke test on GNAT 12.3; the executable prints version 0.1.0 and the parameters. Size: small.
 2. **Deterministic RNG with child streams.** Done in 0.2.0. xoshiro256\*\* seeded by SplitMix64; a child stream is a pure mix of the parent seed and a domain key (region, city, block, mission). Depends on: 1. Try: the smoke test checks the reference vectors, repeats a seed, and re-derives one region without moving another. Size: small.
 3. **Core types and an in-memory map grid.** Done in 0.3.0. Terrain, height, walkable and drivable flags, bounds-checked access, and 4- and 8-neighbour lookup. The seeded test layout stands in until the city-block generator. Depends on: 1. Try: the smoke test, `bin/megacorp` for a text sample, and the browser page for seeds 1, 42, and 100. Size: small (FreeSynd `map.cpp`/`map.h` ~465 lines, plus a cleaner model).
-4. **Virtual FS and asset interface.** Named blobs; own placeholder tileset (a handful of floor, wall, road, door, ped sprites). Depends on: 1. Try: tests load placeholders and never look for Syndicate files. Size: small.
+4. **Virtual FS and asset interface.** Done in 0.4.0. Logical paths, a native disk backend, and an original isometric placeholder atlas. Depends on: 1. Try: the smoke test reads the index through the virtual file system, and the browser page draws seed 42 in isometric view. Size: small.
 
 ### Phase B — Headless simulation
 

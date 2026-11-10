@@ -127,7 +127,8 @@ package Megacorp.Map is
    Export_Seeds : constant Export_Seed_List := (1, 42, 100);
 
    --  Write index.json and one JSON map per export seed.
-   --  Each cell is three characters: terrain, hex height, flags.
+   --  Each cell is five characters: terrain, hex height, flags,
+   --  and two hex digits of the placeholder tile id.
    --  Flags: bit 0 walkable, bit 1 drivable, as a digit 0..3.
    procedure Export_Maps (Directory : String; Version : String)
      with Pre => Directory'Length > 0 and then Version'Length > 0;
