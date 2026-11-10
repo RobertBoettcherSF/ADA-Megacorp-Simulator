@@ -52,9 +52,9 @@ procedure Megacorp_Smoke is
    Later    : Megacorp.Host.Milliseconds;
 begin
    Smoke_Check.Expect
-     (Megacorp.Version = "0.6.0"
+     (Megacorp.Version = "0.6.1"
       and then Megacorp.Name = "Megacorp Simulator",
-      "version 0.6.0");
+      "version 0.6.1");
    Smoke_Check.Expect
      (Params.Corporation_Count (Defaults) = 4
       and then Params.Region_Count (Defaults) = 40
